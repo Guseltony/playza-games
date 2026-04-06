@@ -1,36 +1,59 @@
-var canvas, stage, exportRoot, anim_container, dom_overlay_container, fnStartAnimation,lib;
+var canvas, stage, exportRoot, anim_container, dom_overlay_container, fnStartAnimation, lib;
 function init() {
 	canvas = document.getElementById("canvas");
 	anim_container = document.getElementById("animation_container");
 	dom_overlay_container = document.getElementById("dom_overlay_container");
-	var comp=AdobeAn.getComposition("064A5EF8A526134DBB45A732B5EC511C");
-	lib=comp.getLibrary();
+
+	var comp = AdobeAn.getComposition("064A5EF8A526134DBB45A732B5EC511C");
+	if (!comp) {
+		console.error("AdobeAn Composition not found!");
+		return;
+	}
+	lib = comp.getLibrary();
 	createjs.MotionGuidePlugin.install();
-	var loader = new createjs.LoadQueue(false);
-	loader.setMaxConnections(10);
-	loader.installPlugin(createjs.Sound);
-	loader.addEventListener("fileload", function(evt){handleFileLoad(evt,comp)});
-	loader.addEventListener("complete", function(evt){handleComplete(evt,comp)});
-	loader.addEventListener("progress", function(evt){handleProgress(evt)});
-    loader.addEventListener("error", function(evt){ 
-        console.warn("Load Warning:", evt);
-        // Try to proceed even on minor load errors
-    });
-    
-    if (!comp) {
-        console.error("AdobeAn Composition not found!");
-        return;
-    }
-    
-	lib=comp.getLibrary();
-	loader.loadManifest(lib.properties.manifest);
+
+	// Register sounds separately so they load lazily (not part of the progress queue).
+	// Audio tags inside iframes often never fire 'complete', freezing loading at 0%.
+	var fullManifest = lib.properties.manifest;
+	var soundManifest = fullManifest.filter(function(item) { return item.src && !item.src.startsWith("data:") && /\.(mp3|ogg|wav)$/i.test(item.src); });
+	var dataManifest = fullManifest.filter(function(item) { return item.src && typeof item.src === "string" && item.src.indexOf("data:") === 0; });
+	var assetManifest = fullManifest.filter(function(item) { return !soundManifest.includes(item) && !dataManifest.includes(item); });
+
+	// Register sounds with createjs.Sound so they play correctly when needed
+	soundManifest.forEach(function(s) {
+		createjs.Sound.registerSound(s.src, s.id);
+	});
+
+	// Use XHR-based loading (true) which works reliably inside iframes
+	var loader = new createjs.LoadQueue(true);
+	loader.setMaxConnections(6);
+	loader.addEventListener("fileload", function(evt) { handleFileLoad(evt, comp); });
+	loader.addEventListener("complete", function(evt) { handleComplete(evt, comp); });
+	loader.addEventListener("progress", function(evt) { handleProgress(evt); });
+	loader.addEventListener("error", function(evt) {
+		console.warn("Asset load warning:", evt.item ? evt.item.src : evt);
+		// Continue — non-critical asset failures should not block the game
+	});
+
+	loader.loadManifest(assetManifest);
+
+	// Safety net: if still at 0% after 30s, force-complete (e.g. CSP blocked some assets)
+	setTimeout(function() {
+		var txt = document.getElementById("centertext");
+		if (txt && txt.textContent.indexOf("0%") !== -1) {
+			console.warn("[BulletFury] Loader appears hung — forcing handleComplete");
+			handleComplete({ target: loader }, comp);
+		}
+	}, 30000);
 }
+
 function handleFileLoad(evt, comp) {
 	var images=comp.getImages();	
 	if (evt && (evt.item.type == "image")) { images[evt.item.id] = evt.result; }	
 }
 function handleProgress(evt) {
-		$("#centertext").text("LOADING ASSETS... " + Math.floor((evt.progress || 0) * 100)+"%");
+		var el = document.getElementById("centertext");
+		if (el) el.textContent = "LOADING ASSETS... " + Math.floor((evt.progress || 0) * 100)+"%";
 }
 function handleComplete(evt,comp) {
 	lib=comp.getLibrary();
@@ -48,6 +71,16 @@ function startG() {
 	var preloaderDiv = document.getElementById("_preload_div_");
 	preloaderDiv.style.display = 'none';
 	canvas.style.display = 'block';
+
+	// lib.webgamespreloader (owners intro) uses img._1000Games / img._1000WebGames which are
+	// data: URI images — XHR-based LoadQueue cannot load data: URIs, so they remain undefined,
+	// causing `beginBitmapFill` to crash with "Cannot read properties of undefined (reading 'naturalWidth')".
+	// We skip the owners animation entirely by replacing it with a blank no-op MovieClip.
+	lib.webgamespreloader = function(mode, startPosition, loop) {
+		this.initialize(mode, startPosition, loop, {});
+	};
+	lib.webgamespreloader.prototype = new createjs.MovieClip();
+
 	exportRoot = new lib.bulletfuryhtml5();
 	stage = new lib.Stage(canvas);	
 	fnStartAnimation = function() {
@@ -100,7 +133,11 @@ function startG() {
 	makeResponsive(true,'both',true,1);	
 	AdobeAn.compositionLoaded(lib.properties.id);
 	fnStartAnimation();
-	
+
+	// Skip the owners/intro animation and the game menu — jump directly into the active gameplay (frame 2)
+	readMemory();
+	difficulty = 2;
+	exportRoot.gotoAndStop(2);
 		
 }
 function playSound(id, loop) {return createjs.Sound.play(id, createjs.Sound.INTERRUPT_EARLY, 0, 0, loop);}

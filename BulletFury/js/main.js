@@ -21,7 +21,7 @@ var killInRow = 0;
 var levelStars = 0;
 
 var backgroundSound;
-if(createjs.Touch.isSupported()) mobile = true;//true
+if(typeof createjs !== 'undefined' && createjs.Touch && createjs.Touch.isSupported() && window.innerWidth < 1024) mobile = true;
 
 var bullets;
 var enemies = 0;
@@ -283,9 +283,76 @@ spriteManagerEnemy.cellHeight = 280;
 spriteManagerDumi = new BABYLON.SpriteManager("dumiManager", "images/3d/dumi.png", 20, 30, scene);
 spriteManagerAsinis = new BABYLON.SpriteManager("asinisManager", "images/3d/blood.png", 10, 25, scene);
 
+function updateMinimap() {
+	var canvasM = document.getElementById("minimap");
+	if (!canvasM) return;
+	document.getElementById("minimapContainer").style.display = "block";
+	var ctx = canvasM.getContext("2d");
+	ctx.clearRect(0, 0, 150, 150);
+
+	var scale = 1.3; // Increased scale slightly so more of the map fits
+	var centerX = 75;
+	var centerY = 75;
+
+	// Draw radar rings & crosshairs inside clipped circular area
+	ctx.save();
+	ctx.beginPath();
+	ctx.arc(centerX, centerY, 75, 0, 2 * Math.PI);
+	ctx.clip(); // Crop map strictly to the radar circle
+
+	ctx.strokeStyle = "rgba(50, 255, 50, 0.3)";
+	ctx.lineWidth = 1;
+	ctx.beginPath(); ctx.arc(centerX, centerY, 35, 0, 2 * Math.PI); ctx.stroke();
+	ctx.beginPath(); ctx.arc(centerX, centerY, 60, 0, 2 * Math.PI); ctx.stroke();
+	ctx.beginPath(); ctx.moveTo(centerX, 0); ctx.lineTo(centerX, 150); ctx.stroke();
+	ctx.beginPath(); ctx.moveTo(0, centerY); ctx.lineTo(150, centerY); ctx.stroke();
+
+	// Rotate map relative to player's view so UP is always forward
+	ctx.translate(centerX, centerY);
+	ctx.rotate(-camera.rotation.y);
+	ctx.translate(-centerX, -centerY);
+
+	// Draw alive enemies (relative to rotated context)
+	ctx.fillStyle = "#ff1111"; // Bright red
+	var drawEnemies = function(arr) {
+		if (typeof arr === 'undefined' || !arr) return;
+		for (var i = 0; i < arr.length; i++) {
+			if (arr[i] && arr[i].beigts !== true && arr[i].mirst !== 1 && arr[i].mirst !== 2) {
+				var ex = centerX + (arr[i]._absolutePosition.x - camera.position.x) * scale;
+				var ez = centerY + (camera.position.z - arr[i]._absolutePosition.z) * scale;
+				ctx.beginPath();
+				ctx.arc(ex, ez, 4, 0, 2 * Math.PI);
+				ctx.fill();
+			}
+		}
+	};
+	drawEnemies(enemy1);
+	drawEnemies(enemy2);
+
+	ctx.restore(); // Undo rotation and clipping
+
+	// Draw static player indicator & FOV cone at center
+	ctx.fillStyle = "#11ff11";
+	ctx.beginPath();
+	ctx.arc(centerX, centerY, 4, 0, 2 * Math.PI);
+	ctx.fill();
+
+	ctx.strokeStyle = "rgba(50, 255, 50, 0.7)";
+	ctx.lineWidth = 2;
+	ctx.beginPath();
+	ctx.moveTo(centerX, centerY);
+	ctx.lineTo(centerX - 15, centerY - 25);
+	ctx.moveTo(centerX, centerY);
+	ctx.lineTo(centerX + 15, centerY - 25);
+	ctx.stroke();
+}
+
 engine.runRenderLoop(function () {
     if (scene && camera) {	
-		if(!pause && isPlaying) scene.render();
+		if(!pause && isPlaying) {
+			scene.render();
+			updateMinimap();
+		}
 				
 		//var fpsLabel = document.getElementById("fpsLabel");
 		//fpsLabel.innerHTML = engine.getFps().toFixed() + " fps";
@@ -369,13 +436,27 @@ window.addEventListener("keydown", function (evt) {
 
 		
 var onPointerDown = function (event) {
+	if(!engine.isPointerLock) {
+		canvas3d.requestPointerLock = canvas3d.requestPointerLock || canvas3d.mozRequestPointerLock || canvas3d.webkitRequestPointerLock;
+		if(canvas3d.requestPointerLock) {
+			canvas3d.requestPointerLock();
+			engine.isPointerLock = true;
+			exportRoot.onScreen.temeklis.x = (canvas3d.width / 2) / stage.scaleX;
+			exportRoot.onScreen.temeklis.y = (canvas3d.height / 2) / stage.scaleY;
+			if(camera.inputs.attached.mouse) camera.inputs.attached.mouse.angularSensibility = 1800;
+			exportRoot.onScreen.gun.x = 0;
+			exportRoot.onScreen.gun.y = 0;
+		}
+	}
 	
-	if(engine.isPointerLock) {
-var pickInfo = scene.pick(canvas3d.width / 2, canvas3d.height / 2,function (mesh) { return mesh.isPickable; });
+	var pickInfo;
+	if (engine.isPointerLock) {
+		pickInfo = scene.pick(canvas3d.width / 2, canvas3d.height / 2, function (mesh) { return mesh.isPickable; });
 	} else {
-  var pickInfo = scene.pick(stage.mouseX, stage.mouseY,function (mesh) { return mesh.isPickable; });	
+		pickInfo = scene.pick(stage.mouseX, stage.mouseY, function (mesh) { return mesh.isPickable; });	
 	}		    
-    if (pickInfo.hit) {
+	
+    if (pickInfo && pickInfo.hit) {
 		canvas3d.focus();	
 		shoot(pickInfo);
     }
@@ -756,3 +837,6 @@ function exitPointer() {
 		//camera.inputs.remove(camera.inputs.attached.mouse);
 		}
 }
+var ref = "direct";
+function checkdomain() {if(self!=top) try { ref = document.referrer.split('/')[2]; } catch(e) {}}
+checkdomain();

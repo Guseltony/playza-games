@@ -1,3 +1,5 @@
+window.createjs = window.createjs || {};
+window.AdobeAn = window.AdobeAn || {};
 (function (cjs, an) {
 
 var p; // shortcut to reference prototypes
@@ -5167,5 +5169,4 @@ an.getComposition = function(id) {
 
 
 
-})(createjs = createjs||{}, AdobeAn = AdobeAn||{});
-var createjs, AdobeAn;
+})(window.createjs, window.AdobeAn);

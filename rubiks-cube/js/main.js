@@ -22,11 +22,13 @@
     controls.enablePan = false;
     controls.minDistance = 4;
     controls.maxDistance = 20;
+    // Left click rotates camera, cube manipulation with right click
     controls.mouseButtons = {
         LEFT: THREE.MOUSE.ROTATE,
         MIDDLE: THREE.MOUSE.DOLLY,
-        RIGHT: THREE.MOUSE.ROTATE
+        RIGHT: null
     };
+    // Touch: single finger rotates camera, two fingers zoom/rotate
     controls.touches = {
         ONE: THREE.TOUCH.ROTATE,
         TWO: THREE.TOUCH.DOLLY_ROTATE
@@ -149,8 +151,8 @@
 
     function onPointerDown(e) {
         if (!loaded) return;
-        // Only left button or touch
-        if (e.button !== undefined && e.button !== 0) return;
+        // Only left button or touch (right button also allowed for cube)
+        if (e.button !== undefined && e.button > 1) return;
 
         const pos = getPointerPos(e);
         const ndc = screenToNDC(pos.x, pos.y);
@@ -159,7 +161,7 @@
         const meshes = getCubieMeshes();
         const hits = raycaster.intersectObjects(meshes, false);
         
-        // Allow camera rotation via orbit controls when clicking empty space
+        // Let OrbitControls handle empty space clicks
         if (hits.length === 0) {
             return;
         }
@@ -171,16 +173,14 @@
         e.preventDefault();
         e.stopPropagation();
 
-        // Get face normal in world space
+        // Get face normal in world space (use hit face, not cubie orientation)
         const faceNormal = hit.face.normal.clone();
-        const cubieQuat = new THREE.Quaternion();
-        cubie.getWorldQuaternion(cubieQuat);
-        faceNormal.applyQuaternion(cubieQuat);
-
+        
         // Snap to nearest axis
         const axis = getMainAxis(faceNormal);
         faceNormal.set(0, 0, 0);
         faceNormal[axis] = Math.round(faceNormal[axis]);
+        if (faceNormal[axis] === 0) faceNormal[axis] = 1; // Default to + if 0
 
         // Setup helper plane at hit point, facing along face normal
         helperPlane.position.copy(hit.point);
@@ -209,7 +209,6 @@
     function onPointerMove(e) {
         if (!dragState) return;
         e.preventDefault();
-        e.stopPropagation();
 
         const pos = getPointerPos(e);
         const ndc = screenToNDC(pos.x, pos.y);
@@ -265,7 +264,7 @@
             // Find all cubies in this layer
             const allCubies = rubiksCube.cubies;
             const layer = [];
-            const tol = 0.1;
+            const tol = 0.3;
             for (const c of allCubies) {
                 const cp = c.position.clone();
                 cp.x = Math.round(cp.x * 2) / 2;
@@ -332,11 +331,14 @@
                         c.position.z = Math.round(c.position.z * 2) / 2;
                     }
 
-                    // Determine move notation
-                    const faceName = axisToFace(dragState.flipAxis, dragState.layerValue);
-                    const ccw = dragState.flipAngle < 0;
-                    if (faceName) {
-                        executeMove({ face: faceName, ccw });
+                    // Record the move for solve tracking
+                    if (!gameStarted) startTimer();
+                    moveCount++;
+                    document.getElementById('move-counter').textContent = moveCount;
+
+                    // Check if solved
+                    if (scrambled && rubiksCube.isSolved()) {
+                        onSolved();
                     }
 
                     dragState = null;
@@ -356,38 +358,38 @@
     }
 
     function axisToFace(axis, layerValue) {
-        // Check outer faces first (value = +/-1 for size 3)
-        if (axis.x > 0.5) return 'R';
-        if (axis.x < -0.5) return 'L';
-        if (axis.y > 0.5) return 'U';
-        if (axis.y < -0.5) return 'D';
-        if (axis.z > 0.5) return 'F';
-        if (axis.z < -0.5) return 'B';
+        const absX = Math.abs(axis.x);
+        const absY = Math.abs(axis.y);
+        const absZ = Math.abs(axis.z);
         
-        // Check middle layers (value = 0)
-        if (Math.abs(axis.x) > 0.5 - 0.1) {
-            return layerValue > 0.5 ? 'R' : (layerValue < -0.5 ? 'L' : 'M');
+        if (absX >= absY && absX >= absZ) {
+            if (axis.x > 0.1) return 'R';
+            if (axis.x < -0.1) return 'L';
+            return 'M';
         }
-        if (Math.abs(axis.y) > 0.5 - 0.1) {
-            return layerValue > 0.5 ? 'U' : (layerValue < -0.5 ? 'D' : 'E');
+        if (absY >= absX && absY >= absZ) {
+            if (axis.y > 0.1) return 'U';
+            if (axis.y < -0.1) return 'D';
+            return 'E';
         }
-        if (Math.abs(axis.z) > 0.5 - 0.1) {
-            return layerValue > 0.5 ? 'F' : (layerValue < -0.5 ? 'B' : 'S');
+        if (absZ >= absX && absZ >= absY) {
+            if (axis.z > 0.1) return 'F';
+            if (axis.z < -0.1) return 'B';
+            return 'S';
         }
         return null;
     }
 
-    // Event listeners - use capture phase to fire before OrbitControls
-    renderer.domElement.addEventListener('pointerdown', onPointerDown, { capture: true, passive: false });
-    renderer.domElement.addEventListener('pointermove', onPointerMove, { capture: true, passive: false });
-    renderer.domElement.addEventListener('pointerup', onPointerUp, { capture: true, passive: false });
-    renderer.domElement.addEventListener('pointercancel', onPointerUp, { capture: true, passive: false });
-    renderer.domElement.addEventListener('pointerleave', onPointerUp, { capture: true, passive: false });
+    // Event listeners
+    renderer.domElement.addEventListener('pointerdown', onPointerDown, false);
+    renderer.domElement.addEventListener('pointermove', onPointerMove, false);
+    renderer.domElement.addEventListener('pointerup', onPointerUp, false);
+    renderer.domElement.addEventListener('pointercancel', onPointerUp, false);
+    renderer.domElement.addEventListener('pointerleave', onPointerUp, false);
 
     // ==================== EXECUTE MOVE ====================
 
     function executeMove({ face, ccw }) {
-        if (rubiksCube.isAnimating) return;
         if (!gameStarted) startTimer();
         const notation = face + (ccw ? "'" : "");
         rubiksCube.rotateFace(face, ccw).then(() => {

@@ -110,8 +110,30 @@
     cursor: default;
 }
 </style>
-<script src='js/external/createjs-2015.11.26.min.js'></script>
-<script src='js/external/jquery.min.js'></script>
+<!-- Patch HTMLCanvasElement.getContext to suppress CreateJS warning about willReadFrequently -->
+<script>
+    var originalGetContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function(type, options) {
+        if (type === '2d') {
+            options = options || {};
+            options.willReadFrequently = true;
+        }
+        return originalGetContext.call(this, type, options);
+    };
+</script>
+<script src="https://code.createjs.com/createjs-2015.11.26.min.js"></script>
+<script>
+  if (typeof createjs === 'undefined') {
+    document.write('<scr'+'ipt src="js/external/createjs-2015.11.26.min.js"><\/scr'+'ipt>');
+  }
+</script>
+<!-- jQuery: CDN primary, local fallback -->
+<script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
+<script>
+  if (typeof jQuery === 'undefined') {
+    document.write('<scr'+'ipt src="js/external/jquery.min.js"><\/scr'+'ipt>');
+  }
+</script>
 <script src="js/babylon.custom.js"></script>
 <script src='js/pleaserotate.js'></script>
 <script src="js/bulletfury-html5.js"></script>
@@ -141,6 +163,10 @@
             <img src=images/start.jpg alt="Start Game" title="Start Game" onclick='startG()' style='width:180px; height:auto; cursor:pointer; border-radius: 12px; box-shadow: 0 5px 20px rgba(0,0,0,0.5); border: 2px solid rgba(255,255,255,0.1);' id='stBut'/>
         </div>
     </div>
-
+    
+    <!-- Minimap UI -->
+    <div id="minimapContainer" style="position:absolute; top:20px; right:20px; width:150px; height:150px; border:2px solid rgba(50,255,50,0.5); border-radius:50%; background:rgba(0,20,0,0.6); pointer-events:none; z-index:100; display:none; box-shadow: 0 0 15px rgba(50,255,50,0.2);">
+        <canvas id="minimap" width="150" height="150"></canvas>
+    </div>
 </body>
 </html>
