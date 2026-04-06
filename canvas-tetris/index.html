@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Tetris - Playza</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <canvas id="matrix-bg"></canvas>
+    
+    <div class="game-container">
+        <div class="game-wrapper">
+            <div class="sidebar left-sidebar">
+                <div class="logo">
+                    <span class="logo-text">TETRIS</span>
+                    <span class="logo-sub">PLAYZA</span>
+                </div>
+                
+                <div class="stats-panel">
+                    <div class="stat-box score-box">
+                        <div class="stat-label">SCORE</div>
+                        <div class="stat-value" id="score">0</div>
+                    </div>
+                    
+                    <div class="stat-box level-box">
+                        <div class="stat-label">LEVEL</div>
+                        <div class="stat-value" id="level">1</div>
+                    </div>
+                    
+                    <div class="stat-box lines-box">
+                        <div class="stat-label">LINES</div>
+                        <div class="stat-value" id="lines">0</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="game-main">
+                <div class="game-header">
+                    <span class="logo-mini">TETRIS</span>
+                    <div class="timer-box">
+                        <span class="timer-label">TIME</span>
+                        <span class="timer-value" id="timer">00:00</span>
+                    </div>
+                </div>
+                
+                <div class="stats-row">
+                    <div class="stat-box score-box">
+                        <div class="stat-label">SCORE</div>
+                        <div class="stat-value" id="score-mobile">0</div>
+                    </div>
+                    
+                    <div class="stat-box level-box">
+                        <div class="stat-label">LEVEL</div>
+                        <div class="stat-value" id="level-mobile">1</div>
+                    </div>
+                    
+                    <div class="stat-box lines-box">
+                        <div class="stat-label">LINES</div>
+                        <div class="stat-value" id="lines-mobile">0</div>
+                    </div>
+                </div>
+                
+                <div class="canvas-wrapper">
+                    <canvas id="game-canvas" width="300" height="600"></canvas>
+                    <div class="combo-display" id="combo-display"></div>
+                    <div class="game-overlay" id="overlay">
+                        <div class="overlay-content">
+                            <h2 class="overlay-title" id="overlay-title">TETRIS</h2>
+                            <p class="overlay-subtitle">Press Start to Play</p>
+                            <div class="game-stats" id="game-stats" style="display: none;">
+                                <div class="game-stat-row">
+                                    <span>Final Score</span>
+                                    <span id="final-score">0</span>
+                                </div>
+                                <div class="game-stat-row">
+                                    <span>Lines Cleared</span>
+                                    <span id="final-lines">0</span>
+                                </div>
+                                <div class="game-stat-row">
+                                    <span>Level Reached</span>
+                                    <span id="final-level">1</span>
+                                </div>
+                                <div class="game-stat-row">
+                                    <span>Time</span>
+                                    <span id="final-time">00:00</span>
+                                </div>
+                            </div>
+                            <button class="start-btn" id="start-btn" onclick="playButtonClicked()">START</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="touch-controls">
+                    <button class="touch-btn" ontouchstart="handleTouch('left')" onclick="handleTouch('left')">←</button>
+                    <button class="touch-btn" ontouchstart="handleTouch('rotate')" onclick="handleTouch('rotate')" class="rotate">↻</button>
+                    <button class="touch-btn" ontouchstart="handleTouch('down')" onclick="handleTouch('down')">↓</button>
+                    <button class="touch-btn" ontouchstart="handleTouch('right')" onclick="handleTouch('right')">→</button>
+                    <button class="touch-btn wide" ontouchstart="handleTouch('drop')" onclick="handleTouch('drop')">DROP</button>
+                </div>
+            </div>
+            
+            <div class="sidebar right-sidebar side-panels">
+                <div class="highscore-panel">
+                    <div class="panel-title">HIGH SCORE</div>
+                    <div class="highscore-value" id="highscore">0</div>
+                </div>
+                
+                <div class="preview-panel">
+                    <div class="panel-title">NEXT</div>
+                    <canvas id="next-canvas" width="80" height="80"></canvas>
+                </div>
+                
+                <div class="hold-panel">
+                    <div class="panel-title">HOLD</div>
+                    <canvas id="hold-canvas" width="80" height="80"></canvas>
+                </div>
+                
+                <div class="rules-panel">
+                    <div class="panel-title">HOW TO PLAY</div>
+                    <ul class="rules-list">
+                        <li>← → Move</li>
+                        <li>↑ Rotate</li>
+                        <li>↓ Soft Drop</li>
+                        <li>SPACE Hard Drop</li>
+                        <li>SHIFT Hold Piece</li>
+                    </ul>
+                </div>
+                
+                <div class="sound-toggle">
+                    <button class="sound-btn" id="sound-btn" onclick="toggleSound()">
+                        <span class="sound-icon">🔊</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <audio id="clearsound" src="sound/pop.ogg" preload="auto"></audio>
+    <script src="js/tetris.js"></script>
+    <script src="js/controller.js"></script>
+    <script src="js/render.js"></script>
+    <script src="js/matrix.js"></script>
+</body>
+</html>
