@@ -7,18 +7,38 @@ document.querySelector('#app').innerHTML = `
       <p class="subtitle tracking-[0.3em]">Pure Arcade Action</p>
     </div>
 
-    <div class="stats-bar" id="stats-bar" style="display:none">
-      <div class="stat-card">
-        <span class="stat-label">Score</span>
-        <span class="stat-value" id="ui-score">0</span>
+    <div class="stats-board" id="stats-bar" style="display:none">
+      <div class="stats-row top-row">
+        <div class="stat-box premium">
+           <span class="stat-label">Total Score</span>
+           <span class="stat-value" id="ui-total">0</span>
+        </div>
+        <div class="stat-box primary">
+           <span class="stat-label">Level</span>
+           <span class="stat-value" id="ui-level">1</span>
+        </div>
+        <div class="stat-box timer-box" id="timer-card">
+           <span class="stat-label">Time</span>
+           <span class="stat-value" id="ui-timer">7:00</span>
+        </div>
       </div>
-      <div class="combo-badge" id="combo-badge">
-        <span class="stat-label">Combo</span>
-        <span class="stat-value" id="ui-combo">x1</span>
-      </div>
-      <div class="stat-card timer-card" id="timer-card">
-        <span class="stat-label">Time</span>
-        <span class="stat-value" id="ui-timer">60</span>
+      <div class="stats-row bottom-row">
+        <div class="stat-box wide">
+           <div class="level-progress-info">
+             <span class="stat-label">Level Progress</span>
+             <div class="level-score-text">
+               <span class="stat-value" id="ui-score">0</span>
+               <span class="stat-target" id="ui-target">/ 2000</span>
+             </div>
+           </div>
+           <div class="progress-bar-bg">
+             <div class="progress-bar-fill" id="ui-progress"></div>
+           </div>
+        </div>
+        <div class="stat-box combo-box" id="combo-badge">
+           <span class="stat-label glow">Combo</span>
+           <span class="stat-value" id="ui-combo">x1</span>
+        </div>
       </div>
     </div>
 
@@ -28,8 +48,8 @@ document.querySelector('#app').innerHTML = `
       <div id="start-overlay" class="overlay">
         <div class="overlay-content">
           <h2 class="text-3xl font-black mb-4 italic">READY?</h2>
-          <p class="text-xs opacity-60 mb-8 font-bold leading-relaxed uppercase tracking-widest">Match 3 or more crystals<br>to score massive points!</p>
-          <button id="startBtn" class="btn-primary glow-pulse">START MISSION</button>
+          <p class="text-xs opacity-60 mb-8 font-bold leading-relaxed uppercase tracking-widest">Match 3+ crystals<br>Complete levels!</p>
+          <button id="startBtn" class="btn-primary glow-pulse">START GAME</button>
         </div>
       </div>
     </div>
@@ -50,8 +70,12 @@ document.querySelector('#app').innerHTML = `
 
 const canvas = document.querySelector('#gameCanvas');
 const uiScore = document.querySelector('#ui-score');
+const uiTotal = document.querySelector('#ui-total');
+const uiTarget = document.querySelector('#ui-target');
 const uiCombo = document.querySelector('#ui-combo');
 const uiTimer = document.querySelector('#ui-timer');
+const uiLevel = document.querySelector('#ui-level');
+const uiProgress = document.querySelector('#ui-progress');
 const timerCard = document.querySelector('#timer-card');
 const statsBar = document.querySelector('#stats-bar');
 const comboBadge = document.querySelector('#combo-badge');
@@ -65,21 +89,35 @@ function createGame(canvas) {
   const _origAnimate = game.animate.bind(game);
   const _patchedAnimate = (time) => {
     _origAnimate(time);
+    
+    // Calculate values for current level
+    const levelStart = game.levelStartScore || 0;
+    const currentLevelScore = game.score - levelStart;
+    const targetForLevel = game.targetScore - levelStart;
+    const progressPercent = Math.min(100, (currentLevelScore / targetForLevel) * 100);
+
     // Push live stats
-    if (uiScore) uiScore.textContent = game.score.toLocaleString();
+    if (uiTotal) uiTotal.textContent = game.score.toLocaleString();
+    if (uiScore) uiScore.textContent = currentLevelScore.toLocaleString();
+    if (uiTarget) uiTarget.textContent = `/ ${targetForLevel.toLocaleString()}`;
+    if (uiProgress) uiProgress.style.width = `${progressPercent}%`;
+    
     if (uiCombo) {
       uiCombo.textContent = `x${game.combo}`;
-      comboBadge.style.display = game.combo > 1 ? 'block' : 'flex';
       comboBadge.style.opacity = game.combo > 1 ? '1' : '0.4';
     }
+    
     if (uiTimer) {
-      uiTimer.textContent = game.timeLeft;
-      if (game.timeLeft <= 10) timerCard.classList.add('warning');
+      const mins = Math.floor(game.timeLeft / 60);
+      const secs = game.timeLeft % 60;
+      uiTimer.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+      if (game.timeLeft <= 30) timerCard.classList.add('warning');
       else timerCard.classList.remove('warning');
     }
+    
+    if (uiLevel) uiLevel.textContent = game.level;
   };
   game.animate = _patchedAnimate;
-  // Restart the animation loop with our patched version
   game._animFrameId = requestAnimationFrame(game.animate);
 }
 

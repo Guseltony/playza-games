@@ -58,6 +58,7 @@ body {
     height: 100%;
     z-index: 1;
     touch-action: none;
+    cursor: grab;
 }
 
 #particles-canvas {

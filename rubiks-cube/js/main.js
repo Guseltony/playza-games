@@ -22,17 +22,31 @@
     controls.enablePan = false;
     controls.minDistance = 4;
     controls.maxDistance = 20;
-    // Left click rotates camera, cube manipulation with right click
-    controls.mouseButtons = {
-        LEFT: THREE.MOUSE.ROTATE,
-        MIDDLE: THREE.MOUSE.DOLLY,
-        RIGHT: null
-    };
-    // Touch: single finger rotates camera, two fingers zoom/rotate
-    controls.touches = {
-        ONE: THREE.TOUCH.ROTATE,
-        TWO: THREE.TOUCH.DOLLY_ROTATE
-    };
+
+    function isMobile() {
+        return window.innerWidth <= 768 || 'ontouchstart' in window;
+    }
+
+    function updateControlsForDevice() {
+        const mobile = isMobile();
+        controls.mouseButtons = mobile ? {
+            LEFT: THREE.MOUSE.ROTATE,
+            MIDDLE: THREE.MOUSE.DOLLY,
+            RIGHT: THREE.MOUSE.ROTATE
+        } : {
+            LEFT: THREE.MOUSE.ROTATE,
+            MIDDLE: THREE.MOUSE.DOLLY,
+            RIGHT: null
+        };
+        controls.touches = mobile ? {
+            ONE: THREE.TOUCH.ROTATE,
+            TWO: THREE.TOUCH.DOLLY_ROTATE
+        } : {
+            ONE: THREE.TOUCH.ROTATE,
+            TWO: THREE.TOUCH.DOLLY_ROTATE
+        };
+    }
+    updateControlsForDevice();
 
     scene.add(new THREE.AmbientLight(0xffffff, 0.7));
     const dl1 = new THREE.DirectionalLight(0xffffff, 1.0);
@@ -107,15 +121,12 @@
         document.getElementById('move-counter').textContent = '0';
     }
 
-    // ==================== RAYCASTING / DRAG ====================
-
+    // ==================== SIMPLE DRAG SYSTEM ====================
     const raycaster = new THREE.Raycaster();
-    const mouse = new THREE.Vector2();
+    let dragState = null;
+    let isDragging = false;
+    let isOrbitDragging = false;
 
-    // State
-    let dragState = null; // null | 'preparing' | 'rotating'
-
-    // Helper plane for drag detection
     const helperPlane = new THREE.Mesh(
         new THREE.PlaneGeometry(200, 200),
         new THREE.MeshBasicMaterial({ depthWrite: false, transparent: true, opacity: 0 })
@@ -143,72 +154,66 @@
         return meshes;
     }
 
-    function getMainAxis(v) {
-        return Math.abs(v.x) > Math.abs(v.y)
-            ? (Math.abs(v.x) > Math.abs(v.z) ? 'x' : 'z')
-            : (Math.abs(v.y) > Math.abs(v.z) ? 'y' : 'z');
+    function getIntersect(position, object, multiple) {
+        raycaster.setFromCamera(screenToNDC(position.x, position.y), camera);
+        const intersect = multiple
+            ? raycaster.intersectObjects(object)
+            : raycaster.intersectObject(object);
+        return (intersect.length > 0) ? intersect[0] : false;
     }
 
     function onPointerDown(e) {
         if (!loaded) return;
-        // Only left button or touch (right button also allowed for cube)
         if (e.button !== undefined && e.button > 1) return;
 
         const pos = getPointerPos(e);
-        const ndc = screenToNDC(pos.x, pos.y);
-        raycaster.setFromCamera(ndc, camera);
+        const cubeIntersect = getIntersect(pos, getCubieMeshes(), true);
 
-        const meshes = getCubieMeshes();
-        const hits = raycaster.intersectObjects(meshes, false);
-        
-        // Let OrbitControls handle empty space clicks
-        if (hits.length === 0) {
-            return;
+        if (cubeIntersect !== false) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const faceNormal = cubeIntersect.face.normal.clone().transformDirection(cubeIntersect.object.matrixWorld).round();
+            
+            let clickedFace = null;
+            const absX = Math.abs(faceNormal.x);
+            const absY = Math.abs(faceNormal.y);
+            const absZ = Math.abs(faceNormal.z);
+            
+            if (absX > absY && absX > absZ) {
+                clickedFace = faceNormal.x > 0 ? 'R' : 'L';
+            } else if (absY > absX && absY > absZ) {
+                clickedFace = faceNormal.y > 0 ? 'U' : 'D';
+            } else {
+                clickedFace = faceNormal.z > 0 ? 'F' : 'B';
+            }
+
+            const worldPos = new THREE.Vector3();
+            cubeIntersect.object.userData.cubie.getWorldPosition(worldPos);
+
+            helperPlane.position.copy(cubeIntersect.point);
+            helperPlane.lookAt(helperPlane.position.clone().add(faceNormal));
+            helperPlane.updateMatrixWorld();
+
+            dragState = {
+                cubie: cubeIntersect.object.userData.cubie,
+                clickedFace: clickedFace,
+                startPoint: cubeIntersect.point.clone(),
+                startPos: pos,
+                faceNormal: faceNormal.clone()
+            };
+            
+            isDragging = true;
+            isOrbitDragging = false;
+            controls.enabled = false;
+            controls.stop();
         }
-
-        const hit = hits[0];
-        const cubie = hit.object.userData.cubie;
-        if (!cubie) return;
-
-        e.preventDefault();
-        e.stopPropagation();
-
-        // Get face normal in world space (use hit face, not cubie orientation)
-        const faceNormal = hit.face.normal.clone();
-        
-        // Snap to nearest axis
-        const axis = getMainAxis(faceNormal);
-        faceNormal.set(0, 0, 0);
-        faceNormal[axis] = Math.round(faceNormal[axis]);
-        if (faceNormal[axis] === 0) faceNormal[axis] = 1; // Default to + if 0
-
-        // Setup helper plane at hit point, facing along face normal
-        helperPlane.position.copy(hit.point);
-        helperPlane.lookAt(hit.point.clone().add(faceNormal));
-        helperPlane.updateMatrixWorld();
-
-        // Store drag state
-        const localPoint = helperPlane.worldToLocal(hit.point.clone());
-        dragState = {
-            cubie,
-            faceNormal: faceNormal.clone(),
-            axis,
-            dragStart: localPoint.clone(),
-            dragCurrent: localPoint.clone(),
-            dragTotal: new THREE.Vector3(),
-            flipAxis: null,
-            flipLayer: null,
-            flipAngle: 0,
-            layerValue: 0,
-        };
-
-        // Disable orbit controls during drag
-        controls.enabled = false;
     }
 
     function onPointerMove(e) {
-        if (!dragState) return;
+        if (!dragState || !isDragging) return;
         e.preventDefault();
+        e.stopPropagation();
 
         const pos = getPointerPos(e);
         const ndc = screenToNDC(pos.x, pos.y);
@@ -217,167 +222,87 @@
         const planeHits = raycaster.intersectObject(helperPlane, false);
         if (planeHits.length === 0) return;
 
-        const localPoint = helperPlane.worldToLocal(planeHits[0].point.clone());
-        const delta = localPoint.clone().sub(dragState.dragCurrent);
-        dragState.dragTotal.add(delta);
-        dragState.dragCurrent = localPoint.clone();
+        const currentPoint = planeHits[0].point;
+        const delta = currentPoint.clone().sub(dragState.startPoint);
+        
+        if (delta.length() < 0.3) return;
 
-        const totalLen = dragState.dragTotal.length();
+        const worldPos = new THREE.Vector3();
+        dragState.cubie.getWorldPosition(worldPos);
 
-        // If still preparing, check if drag is significant
-        if (dragState.flipAxis === null) {
-            if (totalLen < 0.05) return;
+        const absX = Math.abs(delta.x);
+        const absY = Math.abs(delta.y);
+        const absZ = Math.abs(delta.z);
+        
+        const face = dragState.clickedFace;
+        
+        let moveFace = null;
+        let moveCCW = false;
 
-            // Determine dominant drag direction in plane local space
-            const dragDir = new THREE.Vector3();
-            if (Math.abs(dragState.dragTotal.x) > Math.abs(dragState.dragTotal.y)) {
-                dragDir.x = Math.sign(dragState.dragTotal.x);
+        const getLayer = (val) => {
+            const threshold = 0.4;
+            if (val > threshold) return 1;
+            if (val < -threshold) return -1;
+            return 0;
+        };
+        
+        if (face === 'F' || face === 'B') {
+            const frontFace = (face === 'F');
+            if (absX > absY) {
+                const layerY = getLayer(worldPos.y);
+                if (layerY === 1) { moveFace = 'U'; moveCCW = frontFace ? (delta.x < 0) : (delta.x > 0); }
+                else if (layerY === -1) { moveFace = 'D'; moveCCW = frontFace ? (delta.x > 0) : (delta.x < 0); }
+                else { moveFace = 'E'; moveCCW = frontFace ? (delta.x < 0) : (delta.x > 0); }
             } else {
-                dragDir.y = Math.sign(dragState.dragTotal.y);
+                const layerX = getLayer(worldPos.x);
+                if (layerX === 1) { moveFace = 'R'; moveCCW = frontFace ? (delta.y > 0) : (delta.y < 0); }
+                else if (layerX === -1) { moveFace = 'L'; moveCCW = frontFace ? (delta.y < 0) : (delta.y > 0); }
+                else { moveFace = 'M'; moveCCW = frontFace ? (delta.y > 0) : (delta.y < 0); }
             }
-
-            // Convert to world space
-            const worldDir = helperPlane.localToWorld(dragDir).sub(helperPlane.position).normalize();
-
-            // Rotation axis = cross(faceNormal, dragDirection)
-            const flipAxis = new THREE.Vector3().crossVectors(dragState.faceNormal, worldDir).normalize();
-
-            // Snap to nearest axis
-            const fa = getMainAxis(flipAxis);
-            flipAxis.set(0, 0, 0);
-            flipAxis[fa] = Math.round(flipAxis[fa]);
-
-            dragState.flipAxis = flipAxis;
-
-            // Determine which layer to rotate based on clicked cubie position
-            // Positions are: size 3 -> -1,0,1; size 4 -> -1.5,-0.5,0.5,1.5; etc.
-            // We need to round to get integer-like values
-            const cubiePos = dragState.cubie.position.clone();
-            cubiePos.x = Math.round(cubiePos.x * 2) / 2;
-            cubiePos.y = Math.round(cubiePos.y * 2) / 2;
-            cubiePos.z = Math.round(cubiePos.z * 2) / 2;
-            const layerAxis = fa;
-            const layerValue = cubiePos[layerAxis];
-
-            dragState.layerValue = layerValue;
-
-            // Find all cubies in this layer
-            const allCubies = rubiksCube.cubies;
-            const layer = [];
-            const tol = 0.3;
-            for (const c of allCubies) {
-                const cp = c.position.clone();
-                cp.x = Math.round(cp.x * 2) / 2;
-                cp.y = Math.round(cp.y * 2) / 2;
-                cp.z = Math.round(cp.z * 2) / 2;
-                if (Math.abs(cp[layerAxis] - layerValue) < tol) {
-                    layer.push(c);
-                }
+        }
+        else if (face === 'R' || face === 'L') {
+            const rightFace = (face === 'R');
+            if (absY > absZ) {
+                const layerZ = getLayer(worldPos.z);
+                if (layerZ === 1) { moveFace = 'F'; moveCCW = rightFace ? (delta.y > 0) : (delta.y < 0); }
+                else if (layerZ === -1) { moveFace = 'B'; moveCCW = rightFace ? (delta.y < 0) : (delta.y > 0); }
+                else { moveFace = 'S'; moveCCW = rightFace ? (delta.y > 0) : (delta.y < 0); }
+            } else {
+                const layerY = getLayer(worldPos.y);
+                if (layerY === 1) { moveFace = 'U'; moveCCW = rightFace ? (delta.z < 0) : (delta.z > 0); }
+                else if (layerY === -1) { moveFace = 'D'; moveCCW = rightFace ? (delta.z > 0) : (delta.z < 0); }
+                else { moveFace = 'E'; moveCCW = rightFace ? (delta.z < 0) : (delta.z > 0); }
             }
-
-            dragState.flipLayer = layer;
-            dragState.flipAngle = 0;
-
-            // Attach layer to pivot
-            rubiksCube._attachToPivot(layer);
+        }
+        else if (face === 'U' || face === 'D') {
+            const upFace = (face === 'U');
+            if (absX > absZ) {
+                const layerZ = getLayer(worldPos.z);
+                if (layerZ === 1) { moveFace = 'F'; moveCCW = upFace ? (delta.x > 0) : (delta.x < 0); }
+                else if (layerZ === -1) { moveFace = 'B'; moveCCW = upFace ? (delta.x < 0) : (delta.x > 0); }
+                else { moveFace = 'S'; moveCCW = upFace ? (delta.x > 0) : (delta.x < 0); }
+            } else {
+                const layerX = getLayer(worldPos.x);
+                if (layerX === 1) { moveFace = 'R'; moveCCW = upFace ? (delta.z < 0) : (delta.z > 0); }
+                else if (layerX === -1) { moveFace = 'L'; moveCCW = upFace ? (delta.z > 0) : (delta.z < 0); }
+                else { moveFace = 'M'; moveCCW = upFace ? (delta.z < 0) : (delta.z > 0); }
+            }
         }
 
-        // Now rotating
-        if (dragState.flipAxis !== null && dragState.flipLayer) {
-            // Determine which local axis of the helper plane corresponds to rotation
-            // The rotation axis is perpendicular to both faceNormal and dragDir
-            // We need to figure out: does dragging along plane-x or plane-y cause rotation?
-            // Answer: both do, but we use the dominant one
-            const domAxis = Math.abs(dragState.dragTotal.x) > Math.abs(dragState.dragTotal.y) ? 'x' : 'y';
-            const rotAmount = domAxis === 'x' ? delta.x : delta.y;
-
-            const axis = getMainAxis(dragState.flipAxis);
-            rubiksCube.pivot.rotation[axis] += rotAmount;
-            dragState.flipAngle += rotAmount;
+        if (moveFace) {
+            executeMove({ face: moveFace, ccw: moveCCW });
         }
+
+        isDragging = false;
+        dragState = null;
+        controls.enabled = true;
     }
 
     function onPointerUp(e) {
-        if (!dragState) return;
-        e.preventDefault();
-
-        if (dragState.flipLayer && dragState.flipAngle !== 0) {
-            // Snap to nearest 90 degrees
-            const axis = getMainAxis(dragState.flipAxis);
-            const currentAngle = rubiksCube.pivot.rotation[axis];
-            const snapped = Math.round(currentAngle / (Math.PI / 2)) * (Math.PI / 2);
-            const remaining = snapped - currentAngle;
-
-            // Animate the remaining rotation
-            const dur = 150;
-            const start = Date.now();
-            const startRot = rubiksCube.pivot.rotation[axis];
-
-            function snapAnim() {
-                const p = Math.min((Date.now() - start) / dur, 1);
-                const e = 1 - Math.pow(1 - p, 3);
-                rubiksCube.pivot.rotation[axis] = startRot + remaining * e;
-                if (p < 1) {
-                    requestAnimationFrame(snapAnim);
-                } else {
-                    rubiksCube.pivot.rotation[axis] = snapped;
-                    rubiksCube._detachFromPivot(dragState.flipLayer);
-                    rubiksCube.pivot.rotation[axis] = 0;
-
-                    // Snap positions to nearest 0.5 to handle floating point drift
-                    for (const c of dragState.flipLayer) {
-                        c.position.x = Math.round(c.position.x * 2) / 2;
-                        c.position.y = Math.round(c.position.y * 2) / 2;
-                        c.position.z = Math.round(c.position.z * 2) / 2;
-                    }
-
-                    // Record the move for solve tracking
-                    if (!gameStarted) startTimer();
-                    moveCount++;
-                    document.getElementById('move-counter').textContent = moveCount;
-
-                    // Check if solved
-                    if (scrambled && rubiksCube.isSolved()) {
-                        onSolved();
-                    }
-
-                    dragState = null;
-                    controls.enabled = true;
-                }
-            }
-            requestAnimationFrame(snapAnim);
-        } else {
-            // No significant drag, just cancel
-            if (dragState.flipLayer) {
-                rubiksCube._detachFromPivot(dragState.flipLayer);
-                rubiksCube.pivot.rotation.set(0, 0, 0);
-            }
-            dragState = null;
-            controls.enabled = true;
-        }
-    }
-
-    function axisToFace(axis, layerValue) {
-        const absX = Math.abs(axis.x);
-        const absY = Math.abs(axis.y);
-        const absZ = Math.abs(axis.z);
-        
-        if (absX >= absY && absX >= absZ) {
-            if (axis.x > 0.1) return 'R';
-            if (axis.x < -0.1) return 'L';
-            return 'M';
-        }
-        if (absY >= absX && absY >= absZ) {
-            if (axis.y > 0.1) return 'U';
-            if (axis.y < -0.1) return 'D';
-            return 'E';
-        }
-        if (absZ >= absX && absZ >= absY) {
-            if (axis.z > 0.1) return 'F';
-            if (axis.z < -0.1) return 'B';
-            return 'S';
-        }
-        return null;
+        if (e) { e.preventDefault(); e.stopPropagation(); }
+        isDragging = false;
+        dragState = null;
+        controls.enabled = true;
     }
 
     // Event listeners
@@ -388,7 +313,6 @@
     renderer.domElement.addEventListener('pointerleave', onPointerUp, false);
 
     // ==================== EXECUTE MOVE ====================
-
     function executeMove({ face, ccw }) {
         if (!gameStarted) startTimer();
         const notation = face + (ccw ? "'" : "");
@@ -399,7 +323,6 @@
     }
 
     // ==================== WIN ====================
-
     function onSolved() {
         stopTimer();
         const elapsed = getElapsed();
@@ -419,7 +342,6 @@
     }
 
     // ==================== KEYBOARD ====================
-
     document.addEventListener('keydown', (e) => {
         if (!loaded) return;
         const k = e.key.toUpperCase();
@@ -429,14 +351,16 @@
             document.getElementById('keyboard-guide').classList.add('hidden');
             return;
         }
-        const map = { R: 'R', L: 'L', U: 'U', D: 'D', F: 'F', B: 'B', M: 'M', E: 'E', S: 'S' };
+        const map = { R: 'R', L: 'L', U: 'U', D: 'D', F: 'F', B: 'B' };
         if (map[k]) { executeMove({ face: map[k], ccw: e.shiftKey }); return; }
-        if (k === 'S') handleScramble();
+        if (k === 'M') { executeMove({ face: 'M', ccw: e.shiftKey }); return; }
+        if (k === 'E') { executeMove({ face: 'E', ccw: e.shiftKey }); return; }
+        if (k === 'S' && !e.shiftKey) { handleScramble(); return; }
+        if (k === 'P') { handleScramble(); return; }
         if (k === 'H') document.getElementById('keyboard-guide').classList.toggle('hidden');
     });
 
     // ==================== ACTIONS ====================
-
     async function handleScramble() {
         if (rubiksCube.isAnimating) return;
         resetTimer(); clearHistory(); scrambled = false;
@@ -467,7 +391,6 @@
     }
 
     // ==================== UI ====================
-
     document.getElementById('btn-scramble').addEventListener('click', handleScramble);
     document.getElementById('btn-reset').addEventListener('click', handleReset);
     document.getElementById('btn-solve').addEventListener('click', () => {
@@ -542,6 +465,7 @@
         camera.updateProjectionMatrix();
         renderer.setSize(window.innerWidth, window.innerHeight);
         particleSystem.resize();
+        updateControlsForDevice();
     });
 
     document.getElementById('best-time').textContent = formatTime(bestTime);
