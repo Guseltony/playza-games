@@ -35,6 +35,76 @@
     align-items: center;
   }
 
+  /* ─── Premium Minimap Radar ──────────────────────────────── */
+  #minimapContainer {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 164px;
+    height: 200px;
+    pointer-events: none;
+    z-index: 200;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+
+  #minimapHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 0 2px;
+  }
+
+  #minimapLabel {
+    font-family: 'Courier New', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    color: rgba(0, 255, 80, 0.8);
+    text-shadow: 0 0 8px rgba(0, 255, 80, 0.6);
+  }
+
+  #minimapEnemyCount {
+    font-family: 'Courier New', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    color: rgba(255, 60, 60, 0.9);
+    text-shadow: 0 0 6px rgba(255, 60, 60, 0.7);
+  }
+
+  #minimapRadarWrap {
+    position: relative;
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    box-shadow:
+      0 0 0 2px rgba(0, 200, 60, 0.4),
+      0 0 20px rgba(0, 200, 60, 0.25),
+      0 0 40px rgba(0, 200, 60, 0.1),
+      inset 0 0 20px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(2px);
+    overflow: hidden;
+  }
+
+  #minimap {
+    width: 160px !important;
+    height: 160px !important;
+    display: block;
+  }
+
+  #minimapFooter {
+    font-family: 'Courier New', monospace;
+    font-size: 9px;
+    color: rgba(0, 180, 60, 0.45);
+    letter-spacing: 1px;
+    text-align: center;
+  }
+
+  /* ─── Rest of original styles ─────────────────────────────── */
+
   #centertext, .centertext {
     position: relative;
     width: 100%;
@@ -165,8 +235,15 @@
     </div>
     
     <!-- Minimap UI -->
-    <div id="minimapContainer" style="position:absolute; top:20px; right:20px; width:150px; height:150px; border:2px solid rgba(50,255,50,0.5); border-radius:50%; background:rgba(0,20,0,0.6); pointer-events:none; z-index:100; display:none; box-shadow: 0 0 15px rgba(50,255,50,0.2);">
-        <canvas id="minimap" width="150" height="150"></canvas>
+    <div id="minimapContainer" style="display:none;">
+      <div id="minimapHeader">
+        <span id="minimapLabel">&#x25CF; RADAR</span>
+        <span id="minimapEnemyCount"></span>
+      </div>
+      <div id="minimapRadarWrap">
+        <canvas id="minimap" width="160" height="160"></canvas>
+      </div>
+      <div id="minimapFooter">PLAYER-CENTRIC &bull; NORTH UP</div>
     </div>
 </body>
 </html>

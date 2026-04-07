@@ -169,17 +169,20 @@ function clearLines() {
 
 function updateScore(linesCleared, comboCount) {
     var points = 0;
+    var type = '';
     switch(linesCleared) {
-        case 1: points = 100; break;
-        case 2: points = 300; break;
-        case 3: points = 500; break;
-        case 4: points = 800; break;
+        case 1: points = 100; type = 'SINGLE'; break;
+        case 2: points = 300; type = 'DOUBLE'; break;
+        case 3: points = 500; type = 'TRIPLE'; break;
+        case 4: points = 800; type = 'TETRIS'; break;
     }
     points *= level;
     
     if (comboCount > 0) {
         points += comboCount * 50 * level;
-        showCombo(comboCount);
+        showCombo(comboCount, points);
+    } else {
+        showFloatingScore(points, type);
     }
     
     score += points;
@@ -187,19 +190,30 @@ function updateScore(linesCleared, comboCount) {
     
     level = Math.floor(lines / 10) + 1;
     
-    document.getElementById('score').textContent = score;
-    document.getElementById('score-mobile').textContent = score;
-    document.getElementById('level').textContent = level;
-    document.getElementById('level-mobile').textContent = level;
-    document.getElementById('lines').textContent = lines;
-    document.getElementById('lines-mobile').textContent = lines;
+    const scoreEl = document.getElementById('score');
+    const scoreMobileEl = document.getElementById('score-mobile');
+    if (scoreEl) scoreEl.textContent = score;
+    if (scoreMobileEl) scoreMobileEl.textContent = score;
+
+    const levelEl = document.getElementById('level');
+    const levelMobileEl = document.getElementById('level-mobile');
+    if (levelEl) levelEl.textContent = level;
+    if (levelMobileEl) levelMobileEl.textContent = level;
+
+    const linesEl = document.getElementById('lines');
+    const linesMobileEl = document.getElementById('lines-mobile');
+    if (linesEl) linesEl.textContent = lines;
+    if (linesMobileEl) linesMobileEl.textContent = lines;
     
-    document.getElementById('score').classList.add('updated');
-    setTimeout(() => document.getElementById('score').classList.remove('updated'), 300);
+    if (scoreEl) {
+        scoreEl.classList.add('updated');
+        setTimeout(() => scoreEl.classList.remove('updated'), 300);
+    }
     
     if (score > highscore) {
         highscore = score;
-        document.getElementById('highscore').textContent = highscore;
+        const highscoreEl = document.getElementById('highscore');
+        if (highscoreEl) highscoreEl.textContent = highscore;
         localStorage.setItem('tetris-highscore', highscore);
     }
     
@@ -334,19 +348,30 @@ function newGame() {
     combo = 0;
     lastCleared = 0;
     
-    document.getElementById('score').textContent = '0';
-    document.getElementById('score-mobile').textContent = '0';
-    document.getElementById('level').textContent = '1';
-    document.getElementById('level-mobile').textContent = '1';
-    document.getElementById('lines').textContent = '0';
-    document.getElementById('lines-mobile').textContent = '0';
-    document.getElementById('timer').textContent = '00:00';
+    const scoreEl = document.getElementById('score');
+    if (scoreEl) scoreEl.textContent = '0';
+    const scoreMobileEl = document.getElementById('score-mobile');
+    if (scoreMobileEl) scoreMobileEl.textContent = '0';
+    
+    const levelEl = document.getElementById('level');
+    if (levelEl) levelEl.textContent = '1';
+    const levelMobileEl = document.getElementById('level-mobile');
+    if (levelMobileEl) levelMobileEl.textContent = '1';
+
+    const linesEl = document.getElementById('lines');
+    if (linesEl) linesEl.textContent = '0';
+    const linesMobileEl = document.getElementById('lines-mobile');
+    if (linesMobileEl) linesMobileEl.textContent = '0';
+
+    const timerEl = document.getElementById('timer');
+    if (timerEl) timerEl.textContent = '00:00';
     
     document.getElementById('overlay').classList.add('hidden');
     document.getElementById('overlay').classList.remove('game-over');
     
     highscore = parseInt(localStorage.getItem('tetris-highscore')) || 0;
-    document.getElementById('highscore').textContent = highscore;
+    const highscoreEl = document.getElementById('highscore');
+    if (highscoreEl) highscoreEl.textContent = highscore;
     
     intervalRender = setInterval( render, 30 );
     newShape();
@@ -428,13 +453,24 @@ function showGameOver() {
     document.getElementById('overlay').classList.remove('hidden');
     document.getElementById('overlay').classList.add('game-over');
     document.getElementById('overlay-title').textContent = 'GAME OVER';
-    document.getElementById('overlay-subtitle').textContent = 'Game Complete!';
+    document.getElementById('overlay-subtitle').textContent = 'Mission Complete';
     document.getElementById('game-stats').style.display = 'block';
     document.getElementById('final-score').textContent = score;
     document.getElementById('final-lines').textContent = lines;
     document.getElementById('final-level').textContent = level;
-    document.getElementById('final-time').textContent = document.getElementById('timer').textContent;
-    document.getElementById('start-btn').textContent = 'RETRY';
+    document.getElementById('start-btn').textContent = 'RESTART MODULE';
+    
+    // Submit score to Playza Platform via SDK
+    if (window.PlayzaSDK) {
+        window.PlayzaSDK.submitScore({
+            score: score,
+            metadata: {
+                lines: lines,
+                level: level,
+                game_id: 'canvas-tetris'
+            }
+        });
+    }
 }
 
 function clearAllIntervals(){
@@ -449,9 +485,19 @@ function toggleSound() {
     btn.querySelector('.sound-icon').textContent = soundEnabled ? '🔊' : '🔇';
 }
 
-function showCombo(comboCount) {
+function showCombo(comboCount, points) {
     var comboEl = document.getElementById('combo-display');
-    comboEl.textContent = comboCount + 'x COMBO!';
+    if (!comboEl) return;
+    comboEl.textContent = comboCount + 'x COMBO! +' + points;
+    comboEl.classList.remove('show');
+    void comboEl.offsetWidth;
+    comboEl.classList.add('show');
+}
+
+function showFloatingScore(points, type) {
+    var comboEl = document.getElementById('combo-display');
+    if (!comboEl) return;
+    comboEl.textContent = (type === 'TETRIS' ? 'TETRIS! ' : '') + '+' + points;
     comboEl.classList.remove('show');
     void comboEl.offsetWidth;
     comboEl.classList.add('show');

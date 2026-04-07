@@ -283,69 +283,226 @@ spriteManagerEnemy.cellHeight = 280;
 spriteManagerDumi = new BABYLON.SpriteManager("dumiManager", "images/3d/dumi.png", 20, 30, scene);
 spriteManagerAsinis = new BABYLON.SpriteManager("asinisManager", "images/3d/blood.png", 10, 25, scene);
 
+var _minimapSweep = 0; // rotating radar sweep angle
+
 function updateMinimap() {
-	var canvasM = document.getElementById("minimap");
-	if (!canvasM) return;
-	document.getElementById("minimapContainer").style.display = "block";
-	var ctx = canvasM.getContext("2d");
-	ctx.clearRect(0, 0, 150, 150);
+	var canvasM = document.getElementById('minimap');
+	if (!canvasM || !camera) return;
+	var container = document.getElementById('minimapContainer');
+	if (container) container.style.display = 'flex';
+	var ctx = canvasM.getContext('2d');
+	var W = 160, H = 160;
+	var cx = W / 2, cy = H / 2;
+	var radius = 78;
+	var mapScale = 1.6; // units-per-pixel
 
-	var scale = 1.3; // Increased scale slightly so more of the map fits
-	var centerX = 75;
-	var centerY = 75;
+	// Live enemy count badge
+	var aliveCount = 0;
+	function countAlive(arr) {
+		if (!arr) return;
+		for (var i = 0; i < arr.length; i++) {
+			var e = arr[i];
+			if (e && e.beigts !== true && e.mirst !== 1 && e.mirst !== 2) aliveCount++;
+		}
+	}
+	countAlive(enemy1);
+	countAlive(enemy2);
+	var ecEl = document.getElementById('minimapEnemyCount');
+	if (ecEl) ecEl.textContent = aliveCount > 0 ? ('\u26A0 ' + aliveCount) : '\u2714 CLEAR';
 
-	// Draw radar rings & crosshairs inside clipped circular area
+	// Advance sweep
+	_minimapSweep = (_minimapSweep + 0.04) % (Math.PI * 2);
+
+	ctx.clearRect(0, 0, W, H);
+
+	// ── Outer clip circle ──────────────────────────────────────────────────
 	ctx.save();
 	ctx.beginPath();
-	ctx.arc(centerX, centerY, 75, 0, 2 * Math.PI);
-	ctx.clip(); // Crop map strictly to the radar circle
+	ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+	ctx.clip();
 
-	ctx.strokeStyle = "rgba(50, 255, 50, 0.3)";
+	// Background fill
+	var bgGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+	bgGrad.addColorStop(0, 'rgba(0,30,10,0.92)');
+	bgGrad.addColorStop(1, 'rgba(0,10,5,0.98)');
+	ctx.fillStyle = bgGrad;
+	ctx.fillRect(0, 0, W, H);
+
+	// Concentric range rings
+	ctx.strokeStyle = 'rgba(0,200,60,0.18)';
 	ctx.lineWidth = 1;
-	ctx.beginPath(); ctx.arc(centerX, centerY, 35, 0, 2 * Math.PI); ctx.stroke();
-	ctx.beginPath(); ctx.arc(centerX, centerY, 60, 0, 2 * Math.PI); ctx.stroke();
-	ctx.beginPath(); ctx.moveTo(centerX, 0); ctx.lineTo(centerX, 150); ctx.stroke();
-	ctx.beginPath(); ctx.moveTo(0, centerY); ctx.lineTo(150, centerY); ctx.stroke();
+	[26, 50, 72].forEach(function(r) {
+		ctx.beginPath();
+		ctx.arc(cx, cy, r, 0, Math.PI * 2);
+		ctx.stroke();
+	});
 
-	// Rotate map relative to player's view so UP is always forward
-	ctx.translate(centerX, centerY);
-	ctx.rotate(-camera.rotation.y);
-	ctx.translate(-centerX, -centerY);
+	// Cross-hair lines
+	ctx.strokeStyle = 'rgba(0,200,60,0.18)';
+	ctx.lineWidth = 1;
+	ctx.beginPath(); ctx.moveTo(cx, cy - radius); ctx.lineTo(cx, cy + radius); ctx.stroke();
+	ctx.beginPath(); ctx.moveTo(cx - radius, cy); ctx.lineTo(cx + radius, cy); ctx.stroke();
 
-	// Draw alive enemies (relative to rotated context)
-	ctx.fillStyle = "#ff1111"; // Bright red
-	var drawEnemies = function(arr) {
-		if (typeof arr === 'undefined' || !arr) return;
-		for (var i = 0; i < arr.length; i++) {
-			if (arr[i] && arr[i].beigts !== true && arr[i].mirst !== 1 && arr[i].mirst !== 2) {
-				var ex = centerX + (arr[i]._absolutePosition.x - camera.position.x) * scale;
-				var ez = centerY + (camera.position.z - arr[i]._absolutePosition.z) * scale;
-				ctx.beginPath();
-				ctx.arc(ex, ez, 4, 0, 2 * Math.PI);
-				ctx.fill();
-			}
-		}
-	};
-	drawEnemies(enemy1);
-	drawEnemies(enemy2);
+	// ── Rotating radar sweep ────────────────────────────────────────────────
+	var sweepGrad = ctx.createConicalGradient
+		? ctx.createConicalGradient(cx, cy, _minimapSweep)
+		: null;
 
-	ctx.restore(); // Undo rotation and clipping
-
-	// Draw static player indicator & FOV cone at center
-	ctx.fillStyle = "#11ff11";
+	// Fallback: draw a sweeping sector manually
+	ctx.save();
+	var sweepArc = Math.PI * 0.4;
+	var sweepGrad2 = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+	sweepGrad2.addColorStop(0, 'rgba(0,255,80,0.22)');
+	sweepGrad2.addColorStop(1, 'rgba(0,255,80,0)');
+	ctx.fillStyle = sweepGrad2;
 	ctx.beginPath();
-	ctx.arc(centerX, centerY, 4, 0, 2 * Math.PI);
+	ctx.moveTo(cx, cy);
+	ctx.arc(cx, cy, radius, _minimapSweep - sweepArc, _minimapSweep);
+	ctx.closePath();
 	ctx.fill();
+	ctx.restore();
 
-	ctx.strokeStyle = "rgba(50, 255, 50, 0.7)";
-	ctx.lineWidth = 2;
+	// ── Rotate entire world context around player ──────────────────────────
+	ctx.save();
+	ctx.translate(cx, cy);
+	ctx.rotate(-camera.rotation.y + Math.PI); // rotate so forward = UP
+
+	// ── Draw enemies ───────────────────────────────────────────────────────
+	function drawEnemyDots(arr) {
+		if (!arr) return;
+		for (var i = 0; i < arr.length; i++) {
+			var e = arr[i];
+			if (!e || e.beigts === true || e.mirst === 1 || e.mirst === 2) continue;
+			var dx = (e._absolutePosition.x - camera.position.x) * mapScale;
+			var dz = (camera.position.z - e._absolutePosition.z) * mapScale; // note: Z is depth in BJS
+			// Only draw if within radar circle
+			var dist = Math.sqrt(dx*dx + dz*dz);
+			var drawX = dx, drawY = dz;
+			if (dist > radius - 4) {
+				var clipF = (radius - 4) / dist;
+				drawX *= clipF; drawY *= clipF;
+			}
+			// Glow behind dot
+			var eg = ctx.createRadialGradient(drawX, drawY, 0, drawX, drawY, 8);
+			eg.addColorStop(0, 'rgba(255,40,40,0.7)');
+			eg.addColorStop(1, 'rgba(255,0,0,0)');
+			ctx.fillStyle = eg;
+			ctx.beginPath();
+			ctx.arc(drawX, drawY, 8, 0, Math.PI * 2);
+			ctx.fill();
+			// Solid dot
+			ctx.fillStyle = '#ff3333';
+			ctx.beginPath();
+			ctx.arc(drawX, drawY, 3.5, 0, Math.PI * 2);
+			ctx.fill();
+			// Bright centre
+			ctx.fillStyle = '#ffaaaa';
+			ctx.beginPath();
+			ctx.arc(drawX, drawY, 1.2, 0, Math.PI * 2);
+			ctx.fill();
+		}
+	}
+	drawEnemyDots(enemy1);
+	drawEnemyDots(enemy2);
+
+	// ── Draw health packs (aptiecina) ──────────────────────────────────────
+	if (typeof aptiecina1 !== 'undefined' && aptiecina1) {
+		for (var i = 0; i < aptiecina1.length; i++) {
+			var a = aptiecina1[i];
+			if (!a || a.restart === true) continue;
+			var hx = (a._absolutePosition.x - camera.position.x) * mapScale;
+			var hz = (camera.position.z - a._absolutePosition.z) * mapScale;
+			var hd = Math.sqrt(hx*hx + hz*hz);
+			if (hd > radius - 4) { var hf = (radius-4)/hd; hx*=hf; hz*=hf; }
+			ctx.strokeStyle = '#22ffcc';
+			ctx.lineWidth = 2;
+			ctx.beginPath(); ctx.moveTo(hx, hz-5); ctx.lineTo(hx, hz+5); ctx.stroke();
+			ctx.beginPath(); ctx.moveTo(hx-5, hz); ctx.lineTo(hx+5, hz); ctx.stroke();
+		}
+	}
+
+	ctx.restore(); // undo world rotation
+
+	// ── Player indicator (always at centre, always upright) ─────────────────
+	// Triangle arrow pointing UP (= player's forward direction)
+	ctx.save();
+	ctx.shadowColor = '#00ff60';
+	ctx.shadowBlur = 8;
+	ctx.fillStyle = '#22ff66';
 	ctx.beginPath();
-	ctx.moveTo(centerX, centerY);
-	ctx.lineTo(centerX - 15, centerY - 25);
-	ctx.moveTo(centerX, centerY);
-	ctx.lineTo(centerX + 15, centerY - 25);
+	ctx.moveTo(cx, cy - 8);       // nose
+	ctx.lineTo(cx - 5, cy + 5);   // left fin
+	ctx.lineTo(cx + 5, cy + 5);   // right fin
+	ctx.closePath();
+	ctx.fill();
+	ctx.shadowBlur = 0;
+
+	// Dot at base of arrow
+	ctx.fillStyle = '#aaffc8';
+	ctx.beginPath();
+	ctx.arc(cx, cy + 2, 2, 0, Math.PI * 2);
+	ctx.fill();
+	ctx.restore();
+
+	ctx.restore(); // undo clip
+
+	// ── Outer border ring ─────────────────────────────────────────────────
+	ctx.beginPath();
+	ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+	var borderGrad = ctx.createLinearGradient(0, 0, W, H);
+	borderGrad.addColorStop(0, 'rgba(0,255,100,0.6)');
+	borderGrad.addColorStop(1, 'rgba(0,180,60,0.3)');
+	ctx.strokeStyle = borderGrad;
+	ctx.lineWidth = 2.5;
 	ctx.stroke();
+
+	// ── Compass labels ─────────────────────────────────────────────────────
+	var cRot = -camera.rotation.y + Math.PI;
+	var labels = [
+		{ t: 'N', a: 0 },
+		{ t: 'E', a: Math.PI / 2 },
+		{ t: 'S', a: Math.PI },
+		{ t: 'W', a: -Math.PI / 2 }
+	];
+	var labelR = radius - 10;
+	labels.forEach(function(l) {
+		var ang = l.a + cRot;
+		var lx = cx + Math.sin(ang) * labelR;
+		var ly = cy - Math.cos(ang) * labelR;
+		ctx.save();
+		ctx.font = 'bold 9px monospace';
+		ctx.textAlign = 'center';
+		ctx.textBaseline = 'middle';
+		ctx.fillStyle = l.t === 'N' ? '#ffee44' : 'rgba(0,220,80,0.7)';
+		ctx.fillText(l.t, lx, ly);
+		ctx.restore();
+	});
+
+	// ── Close-enemy warning blink ─────────────────────────────────────────
+	var closestEnemyDist = Infinity;
+	function checkClosest(arr) {
+		if (!arr) return;
+		for (var i = 0; i < arr.length; i++) {
+			var e = arr[i];
+			if (!e || e.beigts === true || e.mirst === 1 || e.mirst === 2) continue;
+			var ddx = e._absolutePosition.x - camera.position.x;
+			var ddz = e._absolutePosition.z - camera.position.z;
+			var d = Math.sqrt(ddx*ddx + ddz*ddz);
+			if (d < closestEnemyDist) closestEnemyDist = d;
+		}
+	}
+	checkClosest(enemy1);
+	checkClosest(enemy2);
+	if (closestEnemyDist < 15) {
+		var blinkAlpha = (Math.sin(Date.now() * 0.012) + 1) * 0.5 * 0.5;
+		ctx.beginPath();
+		ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+		ctx.strokeStyle = 'rgba(255,50,50,' + blinkAlpha + ')';
+		ctx.lineWidth = 5;
+		ctx.stroke();
+	}
 }
+
 
 engine.runRenderLoop(function () {
     if (scene && camera) {	

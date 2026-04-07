@@ -54,17 +54,7 @@ document.querySelector('#app').innerHTML = `
       </div>
     </div>
 
-    <p class="swipe-hint">👆 Tap & swipe gems or use D-Pad to match</p>
-
-    <div class="mobile-dpad">
-      <button class="dpad-btn up" id="dpad-up">▲</button>
-      <div class="dpad-row">
-        <button class="dpad-btn left" id="dpad-left">◀</button>
-        <button class="dpad-btn action" id="dpad-action">🎯</button>
-        <button class="dpad-btn right" id="dpad-right">▶</button>
-      </div>
-      <button class="dpad-btn down" id="dpad-down">▼</button>
-    </div>
+    <p class="swipe-hint">👆 Tap or swipe gems to match</p>
   </div>
 `
 
@@ -182,9 +172,4 @@ document.querySelector('#startBtn').addEventListener('click', () => {
   createGame(canvas);
 });
 
-// D-Pad Bindings
-document.querySelector('#dpad-up').addEventListener('click', () => game?.moveCursor?.(-1, 0));
-document.querySelector('#dpad-down').addEventListener('click', () => game?.moveCursor?.(1, 0));
-document.querySelector('#dpad-left').addEventListener('click', () => game?.moveCursor?.(0, -1));
-document.querySelector('#dpad-right').addEventListener('click', () => game?.moveCursor?.(0, 1));
-document.querySelector('#dpad-action').addEventListener('click', () => game?.actionCursor?.());
+});
