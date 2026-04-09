@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Adaptive Power Runner</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <!-- Three.js and GSAP -->
+    <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+    </script>
+</head>
+<body>
+    <div id="game-container">
+        <!-- Three.js Canvas will be targetted here -->
+    </div>
+
+    <!-- UI Overlay -->
+    <div id="ui-overlay">
+        <!-- HUD -->
+        <div id="hud">
+            <div class="hud-top">
+                <div class="stat-group">
+                    <span class="label">KILLS</span>
+                    <span id="distance-val" class="value">0</span>
+                </div>
+                <div class="stat-group center">
+                    <div id="weapon-display">
+                        <span class="label">ACTIVE SQUAD</span>
+                        <div id="mod-slots" class="mod-list">
+                            <span id="score-val" class="value">00</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="stat-group right">
+                    <span class="label">POWER LEVEL</span>
+                    <span id="gun-power-val" class="value">0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Start Screen -->
+        <div id="start-screen" class="screen active">
+            <div class="menu-card">
+                <div class="glitch-title" data-text="POWER RUNNER">POWER RUNNER</div>
+                <p class="subtitle italic">Evolve your weapon. Build chaos. Survive the grid.</p>
+                
+                <div class="instructions">
+                    <div class="inst-item">
+                        <div class="key">A / D</div>
+                        <span>Move lanes (Sides for Buffs | Middle for Combat)</span>
+                    </div>
+                    <div class="inst-item">
+                        <div class="key">CORE</div>
+                        <span>One touch by enemies = CATASTROPHIC FAILURE</span>
+                    </div>
+                    <div class="inst-item">
+                        <span>🔥 Collect Multipliers on side lanes to handle the horde</span>
+                    </div>
+                </div>
+
+                <button class="btn-primary" onclick="window.gameInstance.start()">INITIATE RUN</button>
+            </div>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="game-over-screen" class="screen">
+            <div class="menu-card">
+                <h1 class="danger-text">CONNECTION LOST</h1>
+                <div class="final-stats">
+                    <div class="f-stat">
+                        <span class="label">SCORE</span>
+                        <span id="final-score" class="val">0</span>
+                    </div>
+                    <div class="f-stat">
+                        <span class="label">BUILD</span>
+                        <div id="final-build" class="mod-list small"></div>
+                    </div>
+                </div>
+                <button class="btn-primary" onclick="window.gameInstance.start()">REBOOT SYSTEM</button>
+            </div>
+        </div>
+
+        <!-- Floating Notifications -->
+        <div id="notifier"></div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script type="module" src="game.js"></script>
+</body>
+</html>
