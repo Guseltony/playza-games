@@ -1,175 +1,148 @@
-// Procedural Generation Engine - Handles infinite level generation with difficulty scaling
+import * as THREE from 'three';
+
 export class ProceduralGenerator {
-    constructor(engine) {
-        this.engine = engine;
-        this.chunkSize = 50;
-        this.renderDistance = 150;
-        this.lastChunkZ = 0;
-        this.difficulty = 1;
-        this.biomeWeights = {
-            railway: 30,
-            road: 30,
-            bridge: 15,
-            air: 10,
-            snow: 15
-        };
-        this.patterns = this.initPatterns();
-        this.currentBiome = 'road';
-        this.nextBiome = 'road';
-    }
-    
-    initPatterns() {
-        return {
-            easy: [
-                { type: 'simple', obstacles: 1, spacing: 15 },
-                { type: 'double', obstacles: 2, spacing: 12 },
-                { type: 'gaps', obstacles: 1, spacing: 20 }
-            ],
-            medium: [
-                { type: 'triple', obstacles: 3, spacing: 10 },
-                { type: 'timing', obstacles: 2, spacing: 8 },
-                { type: 'pattern', obstacles: 4, spacing: 7 }
-            ],
-            hard: [
-                { type: 'rush', obstacles: 4, spacing: 6 },
-                { type: 'switch', obstacles: 3, spacing: 5 },
-                { type: 'impossible', obstacles: 5, spacing: 4 }
-            ]
-        };
-    }
-    
-    update(dt) {
-        const playerZ = this.engine.player.player.position.z;
-        
-        if (playerZ > this.lastChunkZ - this.renderDistance) {
-            this.generateChunk();
-        }
-        
-        this.updateDifficulty();
-        this.checkBiomeTransition();
-    }
-    
-    generateChunk() {
-        const chunkZ = this.lastChunkZ;
-        const pattern = this.getWeightedPattern();
-        
-        this.engine.environment.setBiome(this.currentBiome);
-        
-        for (let i = 0; i < 5; i++) {
-            const z = chunkZ + i * pattern.spacing;
-            const lanes = this.getPatternLanes(pattern);
-            
-            lanes.forEach(lane => {
-                this.spawnObstacle(lane, z);
-                if (Math.random() < 0.3) this.spawnCoin(lane, z + 2);
-            });
-            
-            if (Math.random() < 0.1) {
-                this.spawnPowerUp(this.getRandomLane(), z + 5);
+            constructor(engine) {
+                this.engine = engine;
+                this.chunkSize = 60;
+                this.renderDistance = 200;
+                this.lastChunkZ = 0;
+                this.difficulty = 1;
+                this.currentBiome = 'railway';
+                this.biomes = ['railway', 'road', 'bridge', 'snow'];
+                this.biomeTimer = 30;
+                
+                this.init();
             }
-        }
-        
-        this.lastChunkZ += this.chunkSize;
-    }
-    
-    getWeightedPattern() {
-        const rand = Math.random();
-        let pool;
-        
-        if (this.difficulty < 1.5) pool = this.patterns.easy;
-        else if (this.difficulty < 2.5) pool = this.patterns.medium;
-        else pool = this.patterns.hard;
-        
-        return pool[Math.floor(Math.random() * pool.length)];
-    }
-    
-    getPatternLanes(pattern) {
-        const lanes = [];
-        
-        switch (pattern.type) {
-            case 'simple':
-                lanes.push(this.getRandomLane());
-                break;
-            case 'double':
-                const l1 = this.getRandomLane();
-                lanes.push(l1);
-                if (l1 > 0) lanes.push(l1 - 1);
-                else if (l1 < 2) lanes.push(l1 + 1);
-                break;
-            case 'triple':
-                lanes.push(0, 1, 2);
-                break;
-            case 'gaps':
-                lanes.push(this.getRandomLane());
-                lanes.push((this.getRandomLane() + 1) % 3);
-                break;
-            default:
-                for (let i = 0; i < pattern.obstacles; i++) {
-                    lanes.push(i % 3);
-                }
-        }
-        
-        return [...new Set(lanes)];
-    }
-    
-    getRandomLane() {
-        return Math.floor(Math.random() * 3);
-    }
-    
-    spawnObstacle(lane, z) {
-        const laneX = (lane - 1) * this.engine.config.laneWidth;
-        this.engine.obstacles.spawn(laneX, 0, z, this.currentBiome);
-    }
-    
-    spawnCoin(lane, z) {
-        const laneX = (lane - 1) * this.engine.config.laneWidth;
-        this.engine.powerups.spawnCoin(laneX, 1, z);
-    }
-    
-    spawnPowerUp(lane, z) {
-        const laneX = (lane - 1) * this.engine.config.laneWidth;
-        this.engine.powerups.spawn(laneX, 1, z);
-    }
-    
-    updateDifficulty() {
-        const gameTime = this.engine.gameTime;
-        this.difficulty = 1 + gameTime / 120;
-        
-        this.engine.config.baseSpeed = 15 + gameTime * 0.1;
-    }
-    
-    checkBiomeTransition() {
-        const transitions = {
-            railway: { road: 0.3, bridge: 0.2, snow: 0.2 },
-            road: { railway: 0.3, bridge: 0.2, snow: 0.2 },
-            bridge: { air: 0.4, road: 0.3, snow: 0.3 },
-            air: { bridge: 0.5, road: 0.3, snow: 0.2 },
-            snow: { road: 0.3, railway: 0.3, bridge: 0.2 }
-        };
-        
-        const dist = Math.abs(this.engine.player.player.position.z - this.lastChunkZ);
-        
-        if (dist < 30 && Math.random() < 0.02) {
-            const weights = transitions[this.currentBiome];
-            const biomes = Object.keys(weights);
-            const r = Math.random();
-            let cumulative = 0;
             
-            for (const biome of biomes) {
-                cumulative += weights[biome];
-                if (r < cumulative) {
-                    this.nextBiome = biome;
-                    this.engine.environment.transitionTo(biome);
-                    break;
+            init() {
+                this.lastChunkZ = -10;
+            }
+            
+            update(dt) {
+                const playerZ = this.engine.player.player.position.z;
+
+                // Player moves in -Z. Keep generating while the furthest-ahead
+                // generated chunk (lastChunkZ) isn't renderDistance in front of player.
+                // "Ahead" = more negative Z, so condition: lastChunkZ > playerZ - renderDistance
+                while (this.lastChunkZ > playerZ - this.renderDistance) {
+                    this.generateChunk();
+                }
+
+                this.updateDifficulty(dt);
+            }
+            
+            generateChunk() {
+                const chunkZ = this.lastChunkZ;
+                const patternCount = 8;
+                const spacing    = 18;    // wider spacing for more "running" feel
+
+                this.engine.environment.setBiome(this.currentBiome);
+
+                for (let i = 0; i < patternCount; i++) {
+                    const z = chunkZ - i * spacing; // Spawning forward (-Z)
+                    this.spawnPattern(z);
+                }
+
+                this.lastChunkZ -= this.chunkSize;
+            }
+
+            spawnPattern(z) {
+                const patternType = Math.random();
+                const laneX = (lane) => (lane - 1) * this.engine.config.laneWidth;
+                const diff = this.difficulty;
+
+                if (patternType < 0.25) {
+                    // Single obstacle — coins in BOTH free lanes
+                    const blocked = this.getRandomLane();
+                    this.engine.obstacles.spawn(laneX(blocked), 0, z, this.currentBiome);
+                    [0, 1, 2].filter(l => l !== blocked).forEach(l => this.spawnCoinsInLane(l, z));
+                }
+                else if (patternType < 0.45) {
+                    // Two obstacles — coins fill the one free lane
+                    const freeLane = this.getRandomLane();
+                    [0, 1, 2].forEach(lane => {
+                        if (lane !== freeLane) this.engine.obstacles.spawn(laneX(lane), 0, z, this.currentBiome);
+                        else this.spawnCoinsInLane(lane, z);
+                    });
+                }
+                else if (patternType < 0.6) {
+                    // Obstacle with scattered coins on every free lane
+                    const blocked = this.getRandomLane();
+                    this.engine.obstacles.spawn(laneX(blocked), 0, z, this.currentBiome);
+                    [0, 1, 2].filter(l => l !== blocked).forEach(l => this.spawnCoinsInLane(l, z));
+                    // Extra obstacle staggered 6 ahead
+                    const blocked2 = this.getOtherLane(blocked);
+                    this.engine.obstacles.spawn(laneX(blocked2), 0, z - 6, this.currentBiome);
+                }
+                else if (patternType < 0.75) {
+                    // Zigzag: two obstacles offset by 5 units
+                    const lane1 = this.getRandomLane();
+                    const lane2 = this.getOtherLane(lane1);
+                    this.engine.obstacles.spawn(laneX(lane1), 0, z,     this.currentBiome);
+                    this.engine.obstacles.spawn(laneX(lane2), 0, z - 5, this.currentBiome);
+                    // coins on the always-free lane
+                    const free = [0,1,2].find(l => l !== lane1 && l !== lane2) ?? 1;
+                    this.spawnCoinsInLane(free, z);
+                    this.spawnCoinsInLane(free, z - 5);
+                }
+                else if (patternType < 0.88) {
+                    // Wall of 2 then single — forces lane change
+                    const passLane = this.getRandomLane();
+                    [0, 1, 2].filter(l => l !== passLane)
+                        .forEach(l => this.engine.obstacles.spawn(laneX(l), 0, z, this.currentBiome));
+                    this.spawnCoinsInLane(passLane, z);
+                    // Second set shifted
+                    const passLane2 = this.getOtherLane(passLane);
+                    [0, 1, 2].filter(l => l !== passLane2)
+                        .forEach(l => this.engine.obstacles.spawn(laneX(l), 0, z - 8, this.currentBiome));
+                    this.spawnCoinsInLane(passLane2, z - 8);
+                }
+                else {
+                    // Triple coin lanes — no obstacles, reward stretch
+                    [0, 1, 2].forEach(l => this.spawnCoinsInLane(l, z));
+                }
+
+                // Powerup every ~8 patterns on average
+                if (Math.random() < 0.13) {
+                    const pl = this.getRandomLane();
+                    this.engine.powerups.spawn(laneX(pl), 0, z - 3);
                 }
             }
+
+            spawnCoinsInLane(lane, z) {
+                const x = (lane - 1) * this.engine.config.laneWidth;
+                // 10 coins per row, 1.8 units apart
+                for (let i = 0; i < 10; i++) {
+                    this.engine.powerups.spawnCoin(x, 1, z - i * 1.8);
+                }
+            }
+
+            getOtherLane(lane) {
+                const lanes = [0, 1, 2].filter(l => l !== lane);
+                return lanes[Math.floor(Math.random() * lanes.length)];
+            }
+            
+            getRandomLane() {
+                return Math.floor(Math.random() * 3);
+            }
+            
+            updateDifficulty(dt) {
+                const gameTime = this.engine.gameTime;
+                this.difficulty = 1 + gameTime / 100;
+                this.engine.currentSpeed = Math.min(this.engine.config.baseSpeed + gameTime * 0.15, this.engine.config.maxSpeed);
+                
+                this.biomeTimer -= dt;
+                if (this.biomeTimer <= 0) {
+                    this.currentBiome = this.biomes[Math.floor(Math.random() * this.biomes.length)];
+                    this.biomeTimer = 40;
+                }
+            }
+            
+            reset() {
+                // Start lastChunkZ far ahead of the player to give a clear starting runway
+                this.lastChunkZ = -80;
+                this.difficulty = 1;
+                this.currentBiome = 'railway';
+                this.biomeTimer = 30;
+            }
         }
-    }
-    
-    reset() {
-        this.lastChunkZ = 20;
-        this.difficulty = 1;
-        this.currentBiome = 'road';
-        this.nextBiome = 'road';
-    }
-}

@@ -1,9 +1,9 @@
-// UI Manager - Handles start screen, HUD, and game over screen
+import * as THREE from 'three';
+
 export class UIManager {
     constructor(engine) {
         this.engine = engine;
         this.container = engine.container;
-        
         this.elements = {};
         this.createUI();
     }
@@ -106,7 +106,6 @@ export class UIManager {
                     </div>
                 </div>
                 <button class="restart-btn" id="restart-btn">PLAY AGAIN</button>
-                <button class="share-btn" id="share-btn">SHARE SCORE</button>
             </div>
         `;
         
@@ -185,26 +184,18 @@ export class UIManager {
         
         container.innerHTML = '';
         
+        const icons = { magnet: '🧲', speed: '⚡', shield: '🛡️', jetpack: '🚀', slowmo: '🕒' };
+        
         Object.keys(active).forEach(type => {
             if (active[type] && timers[type] > 0) {
                 const el = document.createElement('div');
                 el.className = 'powerup-indicator';
-                
-                const icons = {
-                    magnet: '🧲',
-                    speed: '⚡',
-                    shield: '🛡️',
-                    jetpack: '🚀',
-                    slowmo: '🕒'
-                };
-                
                 el.innerHTML = `
                     <span class="icon">${icons[type] || '⭐'}</span>
                     <div class="timer-bar">
                         <div class="timer-fill" style="width: ${(timers[type] / 10) * 100}%"></div>
                     </div>
                 `;
-                
                 container.appendChild(el);
             }
         });
