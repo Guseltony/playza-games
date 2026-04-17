@@ -171,5 +171,3 @@ document.querySelector('#startBtn').addEventListener('click', () => {
   statsBar.style.display = 'flex';
   createGame(canvas);
 });
-
-});
