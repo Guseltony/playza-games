@@ -1,139 +1,265 @@
 import * as THREE from 'three';
 
 export class EnvironmentManager {
-            constructor(engine) {
-                this.engine = engine;
-                this.scene = engine.scene;
-                this.currentBiome = 'road';
-                this.transitionProgress = 1;
-                this.floorMeshes = [];
-                
-                this.biomes = {
-                    railway: { color: 0x5a5a5a, fog: 0x4a4a4a },
-                    road: { color: 0x87ceeb, fog: 0x87ceeb },
-                    bridge: { color: 0xffa07a, fog: 0xffa07a },
-                    air: { color: 0x87ceeb, fog: 0xe0ffff },
-                    snow: { color: 0xffffff, fog: 0xe0f7ff }
-                };
-                
-                this.createFloor();
-            }
-            
-            createFloor() {
-                for (let i = 0; i < 40; i++) {
-                    const segment = this.createFloorSegment(-i * 10);
-                    this.scene.add(segment);
-                    this.floorMeshes.push(segment);
-                }
-            }
-            
-            createFloorSegment(z) {
-                const group = new THREE.Group();
-                
-                // Track Base: Ancient stone look
-                const baseGeo = new THREE.BoxGeometry(10, 2, 10);
-                const baseMat = new THREE.MeshStandardMaterial({ color: 0x3d352b, roughness: 0.9, metalness: 0.0 });
-                const base = new THREE.Mesh(baseGeo, baseMat);
-                base.position.set(0, -1, 0);
-                base.receiveShadow = true;
-                group.add(base);
-                
-                // Floor: Tiled stone path (Temple Run style)
-                const floorGeo = new THREE.PlaneGeometry(9.6, 10);
-                const floorMat = new THREE.MeshStandardMaterial({ color: 0x4a4136, roughness: 1.0 });
-                const floor = new THREE.Mesh(floorGeo, floorMat);
-                floor.rotation.x = -Math.PI / 2;
-                floor.position.set(0, 0.01, 0);
-                floor.receiveShadow = true;
-                group.add(floor);
-                
-                // Borders & Curbs: Stone pillars and rails
-                const curbGeo = new THREE.BoxGeometry(0.6, 0.5, 10);
-                const curbMat = new THREE.MeshStandardMaterial({ color: 0x2d261e });
-                
-                const leftCurb = new THREE.Mesh(curbGeo, curbMat);
-                leftCurb.position.set(-4.7, 0.25, 0);
-                group.add(leftCurb);
-                
-                const rightCurb = new THREE.Mesh(curbGeo, curbMat);
-                rightCurb.position.set(4.7, 0.25, 0);
-                group.add(rightCurb);
-                
-                // Side Statues/Pillars (Temple Run vibe)
-                const pillarHeight = 8 + Math.random() * 10;
-                const pillarGeo = new THREE.BoxGeometry(3, pillarHeight, 3);
-                const pillarMat = new THREE.MeshStandardMaterial({ color: 0x332b21, roughness: 0.9 });
-                
-                if (Math.random() > 0.3) {
-                    const leftPillar = new THREE.Mesh(pillarGeo, pillarMat);
-                    leftPillar.name = 'leftWall'; // Keeps existing recycle logic
-                    leftPillar.position.set(-8, pillarHeight / 2 - 1, 0);
-                    leftPillar.receiveShadow = true;
-                    group.add(leftPillar);
-                }
-                
-                if (Math.random() > 0.3) {
-                    const rightPillar = new THREE.Mesh(pillarGeo, pillarMat);
-                    rightPillar.name = 'rightWall';
-                    rightPillar.position.set(8, pillarHeight / 2 - 1, 0);
-                    rightPillar.receiveShadow = true;
-                    group.add(rightPillar);
-                }
+    constructor(engine) {
+        this.engine = engine;
+        this.scene = engine.scene;
+        this.currentBiome = 'road';
+        this.floorMeshes = [];
+        this.ambientTraffic = [];
+        this.billboards = [];
+        this.glowPanels = [];
 
-                // Decorative Stone Markings (Subtle lane dividers)
-                [0, 1, 2].forEach(lane => {
-                    const lineGeo = new THREE.PlaneGeometry(0.1, 10);
-                    const lineMat = new THREE.MeshStandardMaterial({ color: 0x5a4f40, transparent: true, opacity: 0.5 });
-                    const line = new THREE.Mesh(lineGeo, lineMat);
-                    line.rotation.x = -Math.PI / 2;
-                    line.position.set((lane - 1) * 3, 0.02, 0);
-                    group.add(line);
-                });
+        this.biomes = {
+            railway: { road: 0x18253e, glow: 0x38bdf8, fog: 0x09111f, accent: 0x60a5fa, label: 'Rail Sector' },
+            road: { road: 0x131c31, glow: 0x22d3ee, fog: 0x07111f, accent: 0x22d3ee, label: 'Core Grid' },
+            bridge: { road: 0x23151f, glow: 0xf97316, fog: 0x1a0d17, accent: 0xfb7185, label: 'Sky Bridge' },
+            air: { road: 0x0d1a2b, glow: 0xa78bfa, fog: 0x0b1220, accent: 0xc084fc, label: 'Cloud Route' },
+            snow: { road: 0x142235, glow: 0xe0f2fe, fog: 0x0e1728, accent: 0xe0f2fe, label: 'Frost Ring' }
+        };
 
-                group.position.z = z;
-                group.userData.z = z;
-                return group;
-            }
-            
-            update(dt) {
-                const playerZ = this.engine.player.player.position.z;
-                const totalLen = this.floorMeshes.length * 10; // 40 segments × 10 units each
+        this.createFloor();
+        this.createAmbientTraffic();
+        this.createBillboards();
+        this.setBiome(this.currentBiome);
+    }
 
-                this.floorMeshes.forEach(segment => {
-                    const relativeZ = segment.userData.z - playerZ;
+    createFloor() {
+        for (let i = 0; i < 42; i += 1) {
+            const segment = this.createFloorSegment(-i * 10);
+            this.scene.add(segment);
+            this.floorMeshes.push(segment);
+        }
+    }
 
-                    // Segment has passed behind player — move it to the front
-                    if (relativeZ > 15) {
-                        const newZ = segment.userData.z - totalLen;
-                        segment.position.z = newZ;
-                        segment.userData.z  = newZ;
+    createFloorSegment(z) {
+        const group = new THREE.Group();
 
-                        // Randomise side pillars for visual variety
-                        segment.children.forEach(child => {
-                            if (child.name === 'leftWall' || child.name === 'rightWall') {
-                                child.scale.y = 0.5 + Math.random() * 1.5;
-                            }
-                        });
+        const base = new THREE.Mesh(
+            new THREE.BoxGeometry(10, 1.6, 10),
+            new THREE.MeshStandardMaterial({ color: 0x060b14, roughness: 0.95, metalness: 0.18 })
+        );
+        base.position.set(0, -0.8, 0);
+        base.receiveShadow = true;
+        group.add(base);
+
+        const road = new THREE.Mesh(
+            new THREE.PlaneGeometry(9.2, 10),
+            new THREE.MeshStandardMaterial({ color: 0x131c31, roughness: 0.75, metalness: 0.3 })
+        );
+        road.rotation.x = -Math.PI / 2;
+        road.position.y = 0.03;
+        road.receiveShadow = true;
+        group.add(road);
+
+        const edgeMaterial = new THREE.MeshStandardMaterial({
+            color: 0x1f2937,
+            roughness: 0.34,
+            metalness: 0.82,
+            emissive: 0x0ea5e9,
+            emissiveIntensity: 0.65
+        });
+
+        const leftRail = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.2, 10), edgeMaterial);
+        leftRail.position.set(-4.1, 0.2, 0);
+        group.add(leftRail);
+
+        const rightRail = leftRail.clone();
+        rightRail.position.x = 4.1;
+        group.add(rightRail);
+
+        const laneLineMaterial = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.75 });
+        [-1.5, 1.5].forEach((x) => {
+            const line = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 10), laneLineMaterial);
+            line.rotation.x = -Math.PI / 2;
+            line.position.set(x, 0.04, 0);
+            group.add(line);
+        });
+
+        const panelMaterial = new THREE.MeshStandardMaterial({
+            color: 0x1e293b,
+            roughness: 0.24,
+            metalness: 0.85,
+            emissive: 0x38bdf8,
+            emissiveIntensity: 0.4
+        });
+
+        for (let i = -4; i <= 4; i += 2) {
+            const panel = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.06, 0.6), panelMaterial);
+            panel.position.set(i * 0.45, 0.06, (Math.random() - 0.5) * 7);
+            group.add(panel);
+            this.glowPanels.push(panel);
+        }
+
+        const towerMaterial = new THREE.MeshStandardMaterial({
+            color: 0x0f172a,
+            roughness: 0.45,
+            metalness: 0.65,
+            emissive: 0x1d4ed8,
+            emissiveIntensity: 0.22
+        });
+
+        if (Math.random() > 0.18) {
+            const leftTower = new THREE.Mesh(new THREE.BoxGeometry(2.4, 8 + Math.random() * 8, 2.4), towerMaterial);
+            leftTower.name = 'leftTower';
+            leftTower.position.set(-8.5, leftTower.geometry.parameters.height / 2 - 0.6, 0);
+            leftTower.castShadow = true;
+            leftTower.receiveShadow = true;
+            group.add(leftTower);
+        }
+
+        if (Math.random() > 0.18) {
+            const rightTower = new THREE.Mesh(new THREE.BoxGeometry(2.4, 8 + Math.random() * 8, 2.4), towerMaterial);
+            rightTower.name = 'rightTower';
+            rightTower.position.set(8.5, rightTower.geometry.parameters.height / 2 - 0.6, 0);
+            rightTower.castShadow = true;
+            rightTower.receiveShadow = true;
+            group.add(rightTower);
+        }
+
+        group.position.z = z;
+        group.userData.z = z;
+        group.userData.road = road;
+        group.userData.leftRail = leftRail;
+        group.userData.rightRail = rightRail;
+        return group;
+    }
+
+    createAmbientTraffic() {
+        for (let i = 0; i < 16; i += 1) {
+            const body = new THREE.Mesh(
+                new THREE.BoxGeometry(1.1, 0.34, 2.2),
+                new THREE.MeshStandardMaterial({
+                    color: 0x111827,
+                    roughness: 0.24,
+                    metalness: 0.86,
+                    emissive: i % 2 === 0 ? 0x22d3ee : 0xf97316,
+                    emissiveIntensity: 0.55
+                })
+            );
+
+            body.position.set((i % 2 === 0 ? -11.5 : 11.5), 1 + Math.random() * 3, -20 - i * 24);
+            body.rotation.y = i % 2 === 0 ? Math.PI : 0;
+            body.userData.side = i % 2 === 0 ? -1 : 1;
+            body.userData.speed = 12 + Math.random() * 12;
+            this.scene.add(body);
+            this.ambientTraffic.push(body);
+        }
+    }
+
+    createBillboards() {
+        for (let i = 0; i < 10; i += 1) {
+            const pole = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.08, 0.08, 6, 8),
+                new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.45, metalness: 0.75 })
+            );
+
+            const screen = new THREE.Mesh(
+                new THREE.BoxGeometry(2.8, 1.6, 0.14),
+                new THREE.MeshStandardMaterial({
+                    color: 0x0f172a,
+                    roughness: 0.2,
+                    metalness: 0.78,
+                    emissive: i % 2 === 0 ? 0x22d3ee : 0xf97316,
+                    emissiveIntensity: 0.55
+                })
+            );
+
+            const group = new THREE.Group();
+            pole.position.y = 3;
+            screen.position.set(0, 5, 0);
+            group.add(pole);
+            group.add(screen);
+            group.position.set(i % 2 === 0 ? -10.5 : 10.5, 0, -30 - i * 38);
+            group.userData.screen = screen;
+            this.scene.add(group);
+            this.billboards.push(group);
+        }
+    }
+
+    update() {
+        const playerZ = this.engine.player.player.position.z;
+        const totalLength = this.floorMeshes.length * 10;
+
+        this.floorMeshes.forEach((segment) => {
+            const relativeZ = segment.userData.z - playerZ;
+            if (relativeZ > 15) {
+                const newZ = segment.userData.z - totalLength;
+                segment.position.z = newZ;
+                segment.userData.z = newZ;
+
+                segment.children.forEach((child) => {
+                    if (child.name === 'leftTower' || child.name === 'rightTower') {
+                        child.scale.y = 0.75 + Math.random() * 1.5;
                     }
                 });
             }
-            
-            setBiome(biome) {
-                if (this.currentBiome !== biome) {
-                    this.currentBiome = biome;
-                    
-                    const colors = this.biomes[biome];
-                    this.scene.background = new THREE.Color(colors.fog);
-                    this.scene.fog.color = new THREE.Color(colors.fog);
-                }
+        });
+
+        this.ambientTraffic.forEach((car, index) => {
+            car.position.z += car.userData.speed * this.engine.deltaTime * car.userData.side * 0.35;
+            car.position.y = 1 + Math.sin(this.engine.elapsedTime * 2 + index) * 0.08 + (index % 3) * 0.4;
+
+            if (car.position.z > playerZ + 30) {
+                car.position.z = playerZ - 300 - Math.random() * 120;
             }
-            
-            reset() {
-                this.currentBiome = 'road';
-                this.transitionProgress = 1;
-                
-                const colors = this.biomes.road;
-                this.scene.background = new THREE.Color(colors.fog);
-                this.scene.fog.color = new THREE.Color(colors.fog);
+            if (car.position.z < playerZ - 340) {
+                car.position.z = playerZ + 20 + Math.random() * 80;
             }
+        });
+
+        this.billboards.forEach((board, index) => {
+            board.userData.screen.material.emissiveIntensity = 0.45 + Math.sin(this.engine.elapsedTime * 2.5 + index) * 0.12;
+            if (board.position.z > playerZ + 25) {
+                board.position.z = playerZ - 340 - Math.random() * 60;
+            }
+        });
+    }
+
+    setBiome(biome) {
+        if (!this.biomes[biome]) {
+            return;
         }
+
+        this.currentBiome = biome;
+        const colors = this.biomes[biome];
+        this.scene.background = new THREE.Color(colors.fog);
+        this.scene.fog.color = new THREE.Color(colors.fog);
+
+        this.floorMeshes.forEach((segment) => {
+            segment.userData.road.material.color.setHex(colors.road);
+            segment.userData.leftRail.material.emissive.setHex(colors.glow);
+            segment.userData.rightRail.material.emissive.setHex(colors.glow);
+        });
+
+        this.glowPanels.forEach((panel) => {
+            panel.material.emissive.setHex(colors.glow);
+        });
+
+        this.billboards.forEach((board) => {
+            board.userData.screen.material.emissive.setHex(colors.accent);
+        });
+    }
+
+    getCurrentDistrictLabel() {
+        return this.biomes[this.currentBiome]?.label || 'Core Grid';
+    }
+
+    reset() {
+        this.floorMeshes.forEach((segment, index) => {
+            const z = -index * 10;
+            segment.position.z = z;
+            segment.userData.z = z;
+        });
+
+        this.ambientTraffic.forEach((car, index) => {
+            car.position.z = -20 - index * 24;
+        });
+
+        this.billboards.forEach((board, index) => {
+            board.position.z = -30 - index * 38;
+        });
+
+        this.setBiome('road');
+    }
+}
